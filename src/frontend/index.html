@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BlackFile Browser</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-primary: #f5f5f5;
+      --bg-secondary: white;
+      --bg-header: #2c3e50;
+      --bg-breadcrumb: #ecf0f1;
+      --bg-hover: #f8f9fa;
+      --text-primary: #2c3e50;
+      --text-secondary: #555;
+      --text-muted: #999;
+      --text-link: #3498db;
+      --border: #eee;
+      --border-dark: #ddd;
+      --shadow: rgba(0,0,0,0.1);
+      --error-bg: #fee;
+      --error-text: #c33;
+    }
+
+    [data-theme="dark"] {
+      --bg-primary: #1a1a1a;
+      --bg-secondary: #2d2d2d;
+      --bg-header: #1a1a1a;
+      --bg-breadcrumb: #3a3a3a;
+      --bg-hover: #3a3a3a;
+      --text-primary: #e0e0e0;
+      --text-secondary: #b0b0b0;
+      --text-muted: #888;
+      --text-link: #5dade2;
+      --border: #404040;
+      --border-dark: #505050;
+      --shadow: rgba(0,0,0,0.3);
+      --error-bg: #4a2020;
+      --error-text: #ff6b6b;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: var(--bg-primary);
+      padding: 20px;
+      transition: background 0.3s ease;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      box-shadow: 0 2px 8px var(--shadow);
+      overflow: hidden;
+      transition: background 0.3s ease;
+    }
+
+    .header {
+      background: var(--bg-header);
+      color: white;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .theme-toggle {
+      background: none;
+      border: 2px solid rgba(255,255,255,0.3);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s ease;
+    }
+
+    .theme-toggle:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.5);
+    }
+
+    .breadcrumb {
+      padding: 15px 20px;
+      background: var(--bg-breadcrumb);
+      border-bottom: 1px solid var(--border-dark);
+      font-size: 14px;
+      color: var(--text-secondary);
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+
+    .breadcrumb a {
+      color: var(--text-link);
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .breadcrumb a:hover {
+      text-decoration: underline;
+    }
+
+    .file-list {
+      list-style: none;
+    }
+
+    .file-item {
+      display: grid;
+      grid-template-columns: 24px 1fr auto auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .file-item:hover {
+      background: var(--bg-hover);
+    }
+
+    .file-icon {
+      width: 24px;
+      height: 24px;
+      font-size: 20px;
+    }
+
+    .file-name {
+      font-size: 14px;
+      color: var(--text-primary);
+      transition: color 0.3s ease;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-item.directory .file-name {
+      font-weight: 500;
+      color: var(--text-link);
+    }
+
+    .file-size {
+      font-size: 13px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .file-date {
+      font-size: 13px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .empty-state {
+      padding: 60px 20px;
+      text-align: center;
+      color: var(--text-muted);
+    }
+
+    .loading {
+      padding: 40px;
+      text-align: center;
+      color: var(--text-muted);
+    }
+
+    .error {
+      padding: 20px;
+      background: var(--error-bg);
+      color: var(--error-text);
+      margin: 20px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>📁 BlackFile Browser</h1>
+    <button class="theme-toggle" id="themeToggle">🌙 Dark</button>
+  </div>
+  <div class="breadcrumb" id="breadcrumb">
+    <a data-path="">storage</a>
+  </div>
+  <ul class="file-list" id="fileList">
+    <li class="loading">Loading...</li>
+  </ul>
+</div>
+
+<script>
+  let currentPath = '';
+
+  // Theme management
+  const themeToggle = document.getElementById('themeToggle');
+  const html = document.documentElement;
+
+  // Load saved theme
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+  html.setAttribute('data-theme', savedTheme);
+  updateThemeButton(savedTheme);
+
+  themeToggle.addEventListener('click', () => {
+    const currentTheme = html.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    updateThemeButton(newTheme);
+  });
+
+  function updateThemeButton(theme) {
+    if (theme === 'dark') {
+      themeToggle.textContent = '☀️ Light';
+    } else {
+      themeToggle.textContent = '🌙 Dark';
+    }
+  }
+
+  async function loadDirectory(path, pushState = true) {
+    const fileList = document.getElementById('fileList');
+    fileList.innerHTML = '<li class="loading">Loading...</li>';
+
+    try {
+      const url = path ? `/api/list/${path}` : '/api/list';
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error('Failed to load directory');
+      }
+
+      const files = await response.json();
+      currentPath = path;
+      updateBreadcrumb(path);
+      renderFiles(files);
+
+      // Update URL without reloading page
+      if (pushState) {
+        const newUrl = path ? `/${path}` : '/';
+        window.history.pushState({ path }, '', newUrl);
+      }
+    } catch (error) {
+      fileList.innerHTML = `<li class="error">Error loading directory: ${error.message}</li>`;
+    }
+  }
+
+  function updateBreadcrumb(path) {
+    const breadcrumb = document.getElementById('breadcrumb');
+    // Normalize path separators to forward slashes
+    const normalizedPath = path.replace(/\\/g, '/');
+    const parts = normalizedPath ? normalizedPath.split('/') : [];
+
+    let html = '<a data-path="">storage</a>';
+    let accumulated = '';
+
+    parts.forEach((part) => {
+      accumulated += (accumulated ? '/' : '') + part;
+      html += ` / <a data-path="${accumulated}">${part}</a>`;
+    });
+
+    breadcrumb.innerHTML = html;
+
+    // Add click handlers
+    breadcrumb.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        loadDirectory(link.dataset.path);
+      });
+    });
+  }
+
+  function renderFiles(files) {
+    const fileList = document.getElementById('fileList');
+
+    if (files.length === 0) {
+      fileList.innerHTML = '<li class="empty-state">This folder is empty</li>';
+      return;
+    }
+
+    fileList.innerHTML = files.map(file => {
+      const icon = file.is_dir ? '📁' : '📄';
+      const className = file.is_dir ? 'directory' : 'file';
+      const size = file.is_dir ? '-' : formatSize(file.size);
+      const date = formatDate(file.modified);
+
+      return `
+                    <li class="file-item ${className}" data-path="${file.path}" data-is-dir="${file.is_dir}">
+                        <span class="file-icon">${icon}</span>
+                        <span class="file-name">${file.name}</span>
+                        <span class="file-size">${size}</span>
+                        <span class="file-date">${date}</span>
+                    </li>
+                `;
+    }).join('');
+
+    // Add click handlers
+    fileList.querySelectorAll('.file-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const path = item.dataset.path;
+        const isDir = item.dataset.isDir === 'true';
+
+        if (isDir) {
+          loadDirectory(path);
+        } else {
+          window.location.href = `/files/${path}`;
+        }
+      });
+    });
+  }
+
+  function formatSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  }
+
+  function formatDate(timestamp) {
+    const date = new Date(timestamp * 1000);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      return 'Today ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    } else if (diffDays === 1) {
+      return 'Yesterday';
+    } else if (diffDays < 7) {
+      return diffDays + ' days ago';
+    } else {
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+  }
+
+  // Handle browser back/forward buttons
+  window.addEventListener('popstate', (event) => {
+    const path = event.state?.path || '';
+    loadDirectory(path, false);
+  });
+
+  // Load directory from URL path on page load
+  const initialPath = window.location.pathname.replace(/^\/+/, '');
+  // Only load if it's not an API or files route
+  if (!initialPath.startsWith('api/') && !initialPath.startsWith('files/')) {
+    loadDirectory(initialPath, false);
+  }
+</script>
+</body>
+</html>

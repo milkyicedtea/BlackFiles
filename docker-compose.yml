@@ -1,0 +1,12 @@
+services:
+  blackfile:
+    build: .
+    container_name: blackfile
+    ports:
+      - "4100:8000"
+    volumes:
+      - ./storage:/app/storage
+    restart: unless-stopped
+    environment:
+      - ROCKET_ADDRESS=0.0.0.0
+      - ROCKET_PORT=8000
