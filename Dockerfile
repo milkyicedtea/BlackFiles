@@ -1,5 +1,5 @@
 # Build stage with cargo-chef for dependency caching
-FROM rust:1.83-slim as chef
+FROM rust:1.90-slim as chef
 RUN cargo install cargo-chef
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/blackfile /app/blackfile
+COPY --from=builder /app/target/release/blackfiles /app/blackfiles
 
 # Create storage directory
 RUN mkdir -p /app/storage
@@ -36,4 +36,4 @@ RUN mkdir -p /app/storage
 EXPOSE 8000
 
 # Run the application
-CMD ["/app/blackfile"]
+CMD ["/app/blackfiles"]

@@ -1,7 +1,7 @@
 services:
-  blackfile:
+  blackfiles:
     build: .
-    container_name: blackfile
+    container_name: blackfiles
     ports:
       - "4100:8000"
     volumes:
