@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use tokio::fs;
-use crate::lib::{sanitize_path, FileEntry, STORAGE_ROOT};
+use crate::shared::{sanitize_path, FileEntry, STORAGE_ROOT};
 
 #[get("/list/<path..>")]
 pub(crate) async fn list_directory(path: PathBuf) -> Result<Json<Vec<FileEntry>>, Status> {

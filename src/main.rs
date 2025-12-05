@@ -4,7 +4,7 @@ extern crate rocket;
 mod api;
 mod frontend;
 mod files;
-mod lib;
+mod shared;
 
 use crate::api::{list_directory, list_root};
 use crate::files::{download};

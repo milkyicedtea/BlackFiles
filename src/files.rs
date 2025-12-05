@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use rocket::http::Status;
 use tokio::fs;
 use tokio::fs::File;
-use crate::lib::{sanitize_path, FileResponse, STORAGE_ROOT};
+use crate::shared::{sanitize_path, FileResponse, STORAGE_ROOT};
 
 #[get("/<path..>")]
 pub(crate) async fn download(path: PathBuf) -> Result<FileResponse, Status> {

@@ -6,3 +6,7 @@ edition = "2024"
 [dependencies]
 rocket = { version = "0.5.1", features = ["json"] }
 tokio = { version = "1.47.1", features = ["macros", "rt-multi-thread", "fs"]}
+
+[[bin]]
+name = "blackfiles"
+path = "src/main.rs"
