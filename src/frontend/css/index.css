@@ -1,0 +1,176 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg-primary: #f5f5f5;
+  --bg-secondary: white;
+  --bg-header: #2c3e50;
+  --bg-breadcrumb: #ecf0f1;
+  --bg-hover: #f8f9fa;
+  --text-primary: #2c3e50;
+  --text-secondary: #555;
+  --text-muted: #999;
+  --text-link: #3498db;
+  --border: #eee;
+  --border-dark: #ddd;
+  --shadow: rgba(0,0,0,0.1);
+  --error-bg: #fee;
+  --error-text: #c33;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #2d2d2d;
+  --bg-header: #1a1a1a;
+  --bg-breadcrumb: #3a3a3a;
+  --bg-hover: #3a3a3a;
+  --text-primary: #e0e0e0;
+  --text-secondary: #b0b0b0;
+  --text-muted: #888;
+  --text-link: #5dade2;
+  --border: #404040;
+  --border-dark: #505050;
+  --shadow: rgba(0,0,0,0.3);
+  --error-bg: #4a2020;
+  --error-text: #ff6b6b;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: var(--bg-primary);
+  padding: 20px;
+  transition: background 0.3s ease;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px var(--shadow);
+  overflow: hidden;
+  transition: background 0.3s ease;
+}
+
+.header {
+  background: var(--bg-header);
+  color: white;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+h1 {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.theme-toggle {
+  background: none;
+  border: 2px solid rgba(255,255,255,0.3);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.theme-toggle:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.5);
+}
+
+.breadcrumb {
+  padding: 15px 20px;
+  background: var(--bg-breadcrumb);
+  border-bottom: 1px solid var(--border-dark);
+  font-size: 14px;
+  color: var(--text-secondary);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.breadcrumb a {
+  color: var(--text-link);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.file-list {
+  list-style: none;
+}
+
+.file-item {
+  display: grid;
+  grid-template-columns: 24px 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.file-item:hover {
+  background: var(--bg-hover);
+}
+
+.file-icon {
+  width: 24px;
+  height: 24px;
+  font-size: 20px;
+}
+
+.file-name {
+  font-size: 14px;
+  color: var(--text-primary);
+  transition: color 0.3s ease;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-item.directory .file-name {
+  font-weight: 500;
+  color: var(--text-link);
+}
+
+.file-size {
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.file-date {
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.empty-state {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.loading {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.error {
+  padding: 20px;
+  background: var(--error-bg);
+  color: var(--error-text);
+  margin: 20px;
+  border-radius: 4px;
+}
