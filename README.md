@@ -1,12 +1,13 @@
 # BlackFiles
-A Rust-based proof-of-concept web server providing a RESTful API and web interface for browsing and downloading files.
-Build with the [Rocket](https://rocket.rs/) framework and [Tokio](https://tokio.rs/)
+A Rust-based proof-of-concept file server providing a RESTful API and web UI for browsing and downloading files.
+Built with the [Rocket](https://rocket.rs/) web framework and [Tokio](https://tokio.rs/)
 
 ## Features
+- **Monorepo-style**: Backend and frontend in a single repository for easy management, 
+as well as API and web UI served from the same server (Rocket)
 - **REST API**: List directories and files with metadata
 - **File Download**: Secure file serving with path sanitization and validation
-- **Web interface**: Simple HTML frontend for browsing and downloading files
-- **Static Assets**: Serves CSS/JS files for the web interface
+- **Web UI**: Very simple and intuitive frontend for browsing and downloading files
 
 ## Endpoints
 ### API Routes
@@ -16,10 +17,8 @@ Build with the [Rocket](https://rocket.rs/) framework and [Tokio](https://tokio.
 ### File Download
 - `GET /files/<path..>` - Download a file (returns a sized file stream)
 
-### Web Interface
-- `GET /css/<file..>` - Serve static CSS files
-- `GET /js/<file..>` - Serve static JS files
-- `GET /*` - Serve the frontend index.html for client-side routing
+### Web UI
+- `GET /*` - Serves the frontend index.html for client-side routing
 
 ## Security
 Although just a proof-of-concept, the application still implements several security measures
@@ -28,12 +27,16 @@ Although just a proof-of-concept, the application still implements several secur
 - **File Access Control**: Hidden files (starting with .) are blocked for download
 
 ## Dependencies
-Very light! Just [Rocket](https://rocket.rs/) and [Tokio](https://tokio.rs/)!
+Very light on the backend! Just [Rocket](https://rocket.rs/) and [Tokio](https://tokio.rs/)! \
+And pretty light on the frontend too, using [Svelte](https://svelte.dev/) with
+[TailwindCSS](https://tailwindcss.com/) and [DaisyUI](https://daisyui.com/).
 
 ## Running in Production
 - Ensure the `storage` directory exists and has appropriate permissions
-  - The `docker-compose.yml` uses a bind mount by default, but you can also use a volume
-- Setting up a reverse proxy is _recommended_ but not needed. The default port is `8000`.
+  - The `docker-compose.yml` uses a bind mount by default for ease of access,
+  but you can also use a volume
+- Setting up a reverse proxy is _recommended_ but not needed. The api's default port is `8000`.
+  - It currently also binds on host port 4100. This is not neccessary when using a reverse proxy.
 
 ## License
 [MIT](https://opensource.org/license/mit)
