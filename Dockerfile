@@ -1,5 +1,10 @@
+FROM oven/bun:1.3.5-slim AS frontend-builder
+WORKDIR /frontend
+COPY frontend/ ./
+RUN bun ci && bun run build
+
 # Build stage with cargo-chef for dependency caching
-FROM rust:1.90-slim as chef
+FROM rust:1.90-slim AS chef
 RUN cargo install cargo-chef
 WORKDIR /app
 
@@ -28,6 +33,8 @@ RUN apt-get update && \
 
 # Copy binary from builder
 COPY --from=builder /app/target/release/blackfiles /app/blackfiles
+
+COPY --from=frontend-builder /frontend/dist /app/static
 
 # Expose port
 EXPOSE 8000

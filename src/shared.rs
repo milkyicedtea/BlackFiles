@@ -4,6 +4,7 @@ use rocket::http::Header;
 use rocket::response::Responder;
 use rocket::serde::Serialize;
 use tokio::io::AsyncRead;
+use std::path::Path;
 
 pub(crate) const STORAGE_ROOT: &str = "storage";
 
@@ -59,4 +60,13 @@ pub(crate) fn sanitize_path(path: PathBuf) -> Option<PathBuf> {
     }
 
     Some(clean)
+}
+
+// Convert a Path to a web-friendly path string using forward slashes.
+// This ensures the API returns paths with '/' separators even on Windows.
+pub(crate) fn path_to_web_string(path: &Path) -> String {
+    path.iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
 }

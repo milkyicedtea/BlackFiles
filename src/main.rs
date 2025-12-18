@@ -6,15 +6,16 @@ mod frontend;
 mod files;
 mod shared;
 
+use rocket::fs::{relative, FileServer};
 use crate::api::{list_directory, list_root};
 use crate::files::{download};
-use crate::frontend::{frontend_fallback, serve_css, serve_js};
+use crate::frontend::{frontend_fallback};
 
 #[launch]
 fn rocket() -> _ {
     rocket::build()
         .mount("/api", routes![list_root, list_directory])
         .mount("/files", routes![download])
-        .mount("/", routes![serve_css, serve_js, frontend_fallback])
+        .mount("/", FileServer::from(relative!["static"]))
+        .mount("/", routes![frontend_fallback])
 }
-

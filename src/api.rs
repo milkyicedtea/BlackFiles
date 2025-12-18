@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use tokio::fs;
-use crate::shared::{sanitize_path, FileEntry, STORAGE_ROOT};
+use crate::shared::{sanitize_path, FileEntry, STORAGE_ROOT, path_to_web_string};
 
 #[get("/list/<path..>")]
 pub(crate) async fn list_directory(path: PathBuf) -> Result<Json<Vec<FileEntry>>, Status> {
@@ -34,9 +34,12 @@ pub(crate) async fn list_directory(path: PathBuf) -> Result<Json<Vec<FileEntry>>
         }
 
         let relative_path = if safe_path.as_os_str().is_empty() {
-            name.clone()
+            // use helper to normalize single-segment path
+            path_to_web_string(Path::new(&name))
         } else {
-            format!("{}/{}", safe_path.display(), name)
+            // join safe_path and name then convert to web string
+            let p = Path::new(&safe_path).join(&name);
+            path_to_web_string(&p)
         };
 
         let modified = metadata
