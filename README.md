@@ -1,6 +1,9 @@
 # BlackFiles
-A Rust-based proof-of-concept file server providing a RESTful API and web UI for browsing and downloading files.
-Built with the [Rocket](https://rocket.rs/) web framework and [Tokio](https://tokio.rs/)
+A Rust-based proof-of-concept file server providing a RESTful API and web UI for browsing and downloading files. \
+Built with the [Rocket](https://rocket.rs/) web framework which uses the [Tokio](https://tokio.rs/) runtime.
+
+## Styling
+- Now using [Catppuccin](https://catppuccin.com/palette/) themes for better aesthetics!
 
 ## Features
 - **Monorepo-style**: Backend and frontend in a single repository for easy management, 
