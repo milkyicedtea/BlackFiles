@@ -6,11 +6,11 @@ use rocket::serde::Serialize;
 use tokio::io::AsyncRead;
 use std::path::Path;
 
-pub(crate) const STORAGE_ROOT: &str = "storage";
+pub const STORAGE_ROOT: &str = "storage";
 
 #[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
-pub(crate) struct FileEntry {
+pub struct FileEntry {
     pub name: String,
     pub is_dir: bool,
     pub path: String,
@@ -18,7 +18,7 @@ pub(crate) struct FileEntry {
     pub modified: u64, // unix time
 }
 
-pub(crate) struct FileResponse {
+pub struct FileResponse {
     pub stream: Box<dyn AsyncRead + Send + Unpin>,
     pub size: u64,
 }
@@ -32,7 +32,7 @@ impl<'r> Responder<'r, 'static> for FileResponse {
     }
 }
 
-pub(crate) fn sanitize_path(path: PathBuf) -> Option<PathBuf> {
+pub fn sanitize_path(path: PathBuf) -> Option<PathBuf> {
     // allow empty paths for root directory
     if path.as_os_str().is_empty() {
         return Some(PathBuf::new());
@@ -64,7 +64,7 @@ pub(crate) fn sanitize_path(path: PathBuf) -> Option<PathBuf> {
 
 // Convert a Path to a web-friendly path string using forward slashes.
 // This ensures the API returns paths with '/' separators even on Windows.
-pub(crate) fn path_to_web_string(path: &Path) -> String {
+pub fn path_to_web_string(path: &Path) -> String {
     path.iter()
         .map(|p| p.to_string_lossy().into_owned())
         .collect::<Vec<_>>()

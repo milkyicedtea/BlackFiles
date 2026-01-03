@@ -2,10 +2,12 @@ use std::path::{Path, PathBuf};
 use rocket::http::Status;
 use tokio::fs;
 use tokio::fs::File;
+
+use crate::auth::Auth;
 use crate::shared::{sanitize_path, FileResponse, STORAGE_ROOT};
 
 #[get("/<path..>")]
-pub(crate) async fn download(path: PathBuf) -> Result<FileResponse, Status> {
+pub async fn download(_auth: Auth, path: PathBuf) -> Result<FileResponse, Status> {
     let safe_path = sanitize_path(path).ok_or(Status::BadRequest)?;
     let full_path = Path::new(STORAGE_ROOT).join(safe_path);
 
