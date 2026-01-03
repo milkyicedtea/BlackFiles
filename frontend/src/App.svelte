@@ -46,7 +46,7 @@
       const res = await fetch("/api/auth", {
         method: "POST",
         body: JSON.stringify({ token: tokenInput }),
-        credentials: 'same-origin'
+        credentials: 'include'
       })
 
       if (!res.ok) throw new Error("Invalid token")
@@ -65,7 +65,7 @@
     try {
       const url = path ? `/api/list/${path}` : '/api/list'
       const response = await fetch(url, {
-        credentials: 'same-origin'
+        credentials: 'include'
       })
 
       if (!response.ok) {
@@ -102,7 +102,7 @@
     // Check if already authenticated via cookie
     try {
       const res = await fetch("/api/check", {
-        credentials: "same-origin"
+        credentials: "include"
       })
 
       if (res.ok) {
@@ -216,8 +216,12 @@
                   tabindex="0"
                   class={classes.hover}
                   style="padding: 0.75rem 1rem"
-                  on:mouseenter={(e) => e.currentTarget.style.backgroundColor = styles.hover}
-                  on:mouseleave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  on:mouseenter={(e) => {
+                    e.currentTarget.style.backgroundColor = styles.hover
+                  }}
+                  on:mouseleave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent'
+                  }}
                   on:click={() => handleFileClick(file)}
                   on:keydown={(e) => e.key === 'Enter' && handleFileClick(file)}>
                   <div class="flex items-start gap-3">
@@ -246,8 +250,12 @@
                   tabindex="0"
                   class={classes.hover}
                   style="display: grid; grid-template-columns: 24px 1fr auto; gap: 1rem; align-items: center; padding: 0.75rem 1.5rem"
-                  on:mouseenter={(e) => e.currentTarget.style.backgroundColor = styles.hover}
-                  on:mouseleave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  on:mouseenter={(e) => {
+                    e.currentTarget.style.backgroundColor = styles.hover
+                  }}
+                  on:mouseleave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent'
+                  }}
                   on:click={() => handleFileClick(file)}
                   on:keydown={(e) => e.key === 'Enter' && handleFileClick(file)}>
                   <span class="text-xl">{file.is_dir ? '📁' : '📄'}</span>
