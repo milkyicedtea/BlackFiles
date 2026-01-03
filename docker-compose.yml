@@ -2,6 +2,8 @@ services:
   blackfiles:
     build: .
     container_name: blackfiles
+    env_file:
+      .env
     ports:
       - "4100:8000"
     volumes:

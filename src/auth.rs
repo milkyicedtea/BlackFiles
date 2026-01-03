@@ -15,6 +15,8 @@ pub struct LoginRequest {
 #[serde(crate = "rocket::serde")]
 pub struct AuthResponse {
     success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>
 }
 
 #[rocket::async_trait]
@@ -36,19 +38,41 @@ impl<'r> FromRequest<'r> for Auth {
 }
 
 #[post("/auth", data = "<login>")]
-pub fn login(jar: &CookieJar<'_>, login: Json<LoginRequest>) -> Result<Json<AuthResponse>, Status> {
-    let expected = std::env::var("BLACKFILES_TOKEN")
-        .map_err(|_| Status::InternalServerError)?;
+pub fn login(jar: &CookieJar<'_>, login: Json<LoginRequest>) -> (Status, Json<AuthResponse>) {
+    let expected = match std::env::var("BLACKFILES_TOKEN") {
+        Ok(token) => token,
+        Err(_) => {
+            return (
+                Status::InternalServerError,
+                Json(AuthResponse {
+                    success: false,
+                    message: Some("Server configuration error. Could not find BLACKFILES_TOKEN variable".to_string()),
+                })
+            )
+        }
+    };
 
     if login.token == expected {
         jar.add(Cookie::new("blackfiles_token", login.token.clone()));
-        Ok(Json(AuthResponse { success: true }))
+        (
+            Status::Ok,
+            Json(AuthResponse {
+                success: true,
+                message: None,
+            })
+        )
     } else {
-        Err(Status::Unauthorized)
+        (
+            Status::Unauthorized,
+            Json(AuthResponse {
+                success: false,
+                message: Some("Invalid token".to_string()),
+            })
+        )
     }
 }
 
 #[get("/check")]
 pub fn check_auth(_auth: Auth) -> Json<AuthResponse> {
-    Json(AuthResponse { success: true })
+    Json(AuthResponse { success: true, message: None })
 }
