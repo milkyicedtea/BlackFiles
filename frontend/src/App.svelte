@@ -30,6 +30,16 @@
 
   $: ({ classes, styles } = createThemeStyles($theme))
 
+  function getPathFromUrl(): string {
+    const path = window.location.pathname.replace(/^\/+/, '')
+
+    if (path.startsWith('api/') || path.startsWith('files/')) {
+      return ''
+    }
+
+    return path
+  }
+
   async function handleFileClick(file: FileItem) {
     if (file.is_dir) {
       await loadDirectory(file.path)
@@ -46,13 +56,14 @@
       const res = await fetch("/api/auth", {
         method: "POST",
         body: JSON.stringify({ token: tokenInput }),
-        credentials: 'include'
+        credentials: 'same-origin'
       })
 
       if (!res.ok) throw new Error("Invalid token")
 
       authenticated = true
-      await loadDirectory("", false)
+      const intendedPath = getPathFromUrl()
+      await loadDirectory(intendedPath, false)
     } catch {
       authError = "Invalid access token"
     }
@@ -65,7 +76,7 @@
     try {
       const url = path ? `/api/list/${path}` : '/api/list'
       const response = await fetch(url, {
-        credentials: 'include'
+        credentials: 'same-origin'
       })
 
       if (!response.ok) {
@@ -115,10 +126,8 @@
         })
 
         // Load initial directory
-        const initialPath = window.location.pathname.replace(/^\/+/, '')
-        if (!initialPath.startsWith('api/') && !initialPath.startsWith('files/')) {
-          await loadDirectory(initialPath, false)
-        }
+        const initialPath = getPathFromUrl()
+        await loadDirectory(initialPath, false)
       }
     } catch {
       authenticated = false
