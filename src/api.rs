@@ -3,10 +3,11 @@ use std::time::SystemTime;
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use tokio::fs;
+use crate::auth::Auth;
 use crate::shared::{sanitize_path, FileEntry, STORAGE_ROOT, path_to_web_string};
 
 #[get("/list/<path..>")]
-pub async fn list_directory(path: PathBuf) -> Result<Json<Vec<FileEntry>>, Status> {
+pub async fn list_directory(_auth: Auth,path: PathBuf) -> Result<Json<Vec<FileEntry>>, Status> {
     let safe_path = sanitize_path(path.clone()).ok_or(Status::BadRequest)?;
     let full_path = Path::new(STORAGE_ROOT).join(&safe_path);
 
@@ -71,6 +72,6 @@ pub async fn list_directory(path: PathBuf) -> Result<Json<Vec<FileEntry>>, Statu
 }
 
 #[get("/list")]
-pub async fn list_root() -> Result<Json<Vec<FileEntry>>, Status> {
-    list_directory(PathBuf::new()).await
+pub async fn list_root(_auth: Auth) -> Result<Json<Vec<FileEntry>>, Status> {
+    list_directory(_auth, PathBuf::new()).await
 }
