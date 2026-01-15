@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 dotenvy = { version = "0.15.7" }
 rocket = { version = "0.5.1", features = ["json"] }
-tokio = { version = "1.47.1", features = ["macros", "rt-multi-thread", "fs"]}
+tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "fs"]}
 
 [[bin]]
 name = "blackfiles"

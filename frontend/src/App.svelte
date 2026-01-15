@@ -1,21 +1,15 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
-  import { theme } from './core/stores'
-  import { formatSize, formatDate } from './core/formatUtils'
-  import { latte, macchiato } from "./core/theme";
-  import {createThemeStyles, type ThemeClasses, type ThemeStyles} from "./core/themeUtils";
+  import {onMount} from 'svelte'
+  import {theme} from './core/stores'
+  import {formatSize, formatDate} from './core/formatUtils'
+  import {latte, macchiato} from "./core/theme"
+  import {createThemeStyles, type ThemeClasses, type ThemeStyles} from "./core/themeUtils"
+  import blackFolder from "./core/assets/icons8-folder-color-120.png"
+  import type {FileItem} from "./types/file"
 
   let tokenInput = ""
   let authenticated = false
   let authError: string | null = null
-
-  interface FileItem {
-    name: string
-    path: string
-    is_dir: boolean
-    modified: number
-    size: number
-  }
 
   let files: FileItem[] = []
   let loading = true
@@ -175,7 +169,12 @@
     <div class="max-w-4xl mx-auto">
       <!-- Header -->
       <div class="mb-4 flex justify-between items-center">
-        <h1 class={classes.heading} style={styles.heading}>🗂️ BlackFiles Browser</h1>
+        <div class="flex items-center">
+          <img width='40rem' src={blackFolder} alt="" draggable="false"/>
+          &nbsp;
+          <h1 class={classes.heading} style={styles.heading}>BlackFiles Browser</h1>
+        </div>
+
         <button class="btn btn-soft" style={styles.button} on:click={theme.toggle}>
           {$theme === 'dark' ? '☀️ Latte' : '🌙 Macchiato'}
         </button>

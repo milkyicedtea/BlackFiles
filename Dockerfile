@@ -1,4 +1,4 @@
-FROM oven/bun:1.3.5-slim AS frontend-builder
+FROM oven/bun:1 AS frontend-builder
 WORKDIR /frontend
 COPY frontend/ ./
 RUN bun ci && bun run build

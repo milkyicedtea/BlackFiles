@@ -1,9 +1,6 @@
 import {type Readable, writable} from 'svelte/store'
-import type {Theme} from "./theme";
-
-function isValidTheme(value: any): value is Theme {
-  return value === 'light' || value === 'dark'
-}
+import type {Theme} from "./theme"
+import {isValidTheme} from "./themeUtils"
 
 interface ThemeStore extends Readable<Theme> {
   toggle: () => void

@@ -1,4 +1,8 @@
-import {getThemeColors, latte, type Theme} from "./theme";
+import {getThemeColors, latte, type Theme} from "./theme"
+
+export function isValidTheme(value: any): value is Theme {
+  return value === 'light' || value === 'dark'
+}
 
 export function createThemeStyles(theme: Theme) {
   const colors = getThemeColors(theme)
