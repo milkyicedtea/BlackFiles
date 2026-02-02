@@ -4,11 +4,17 @@ services:
     container_name: blackfiles
     env_file:
       .env
-    ports:
-      - "4100:8000"
+    # ports:
+    #   - "4100:8000"
     volumes:
       - ./storage:/app/storage
     restart: unless-stopped
     environment:
       - ROCKET_ADDRESS=0.0.0.0
       - ROCKET_PORT=8000
+    networks:
+        - caddy_net
+
+networks:
+    caddy_net:
+        external: true
