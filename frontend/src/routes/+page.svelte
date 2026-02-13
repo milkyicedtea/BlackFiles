@@ -1,11 +1,11 @@
 <script lang="ts">
   import {onMount} from 'svelte'
-  import {theme} from './core/stores'
-  import {formatSize, formatDate} from './core/formatUtils'
-  import {latte, macchiato} from "./core/theme"
-  import {createThemeStyles, type ThemeClasses, type ThemeStyles} from "./core/themeUtils"
-  import blackFolder from "./core/assets/icons8-folder-color-120.png"
-  import type {FileItem} from "./types/file"
+  import {theme} from '../core/stores'
+  import {formatSize, formatDate} from '../core/formatUtils'
+  import {latte, macchiato} from "../core/theme"
+  import {createThemeStyles, type ThemeClasses, type ThemeStyles} from "../core/themeUtils"
+  import blackFolder from "../core/assets/icons8-folder-color-120.png"
+  import type {FileItem} from "../types/file"
 
   let tokenInput = ""
   let authenticated = false

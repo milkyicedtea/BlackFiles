@@ -1,4 +1,4 @@
-FROM oven/bun:1 AS frontend-builder
+FROM oven/bun:slim AS frontend-builder
 WORKDIR /frontend
 COPY frontend/ ./
 RUN bun ci && bun run build
@@ -23,7 +23,7 @@ COPY . .
 RUN cargo build --release
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 WORKDIR /app
 
 # Install CA certificates for HTTPS
