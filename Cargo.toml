@@ -10,4 +10,4 @@ tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "fs"]}
 
 [[bin]]
 name = "blackfiles"
-path = "src/main.rs"
+path = "src/server/main.rs"

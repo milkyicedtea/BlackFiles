@@ -1,6 +1,6 @@
 import adapter from '@sveltejs/adapter-static'
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte'
-import type {Config} from "@sveltejs/kit"
+import type { Config } from "@sveltejs/kit"
 
 const config: Config = {
 	// Consult https://svelte.dev/docs/kit/integrations
@@ -8,15 +8,19 @@ const config: Config = {
 	preprocess: vitePreprocess(),
 
 	kit: {
+		files: {
+			src: 'src/client'
+		},
 		adapter: adapter({
 			pages: 'build',
 			assets: 'build',
-			fallback: 'null',
+			fallback: 'index.html',
 			precompress: false,
 			strict: true
 		}),
-		paths: {
-			assets: '.src/core/assets'
+
+		alias: {
+			'@client': 'src/client',
 		}
 	}
 }

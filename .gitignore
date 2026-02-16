@@ -35,5 +35,8 @@ vite.config.ts.timestamp-*
 # storage folder
 storage
 
+# static folder (used for production, created automatically)
+static
+
 # misc
 **/directory-tree.txt

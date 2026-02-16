@@ -1,6 +1,19 @@
-export type Theme = 'light' | 'dark'
+interface ThemeValues {
+  base: string
+  mantle: string
+  surface0: string
+  surface1: string
+  surface2: string
+  overlay0: string
+  overlay1: string
+  text: string
+  subtext0: string
+  subtext1: string
+  blue: string
+  red: string
+}
 
-export const latte = {
+export const latte: ThemeValues = {
   base: '#eff1f5',
   mantle: '#e6e9ef',
   surface0: '#ccd0da',
@@ -15,7 +28,7 @@ export const latte = {
   red: '#d20f39',
 }
 
-export const macchiato = {
+export const macchiato: ThemeValues = {
   base: '#24273a',
   mantle: '#1e2030',
   surface0: '#363a4f',
@@ -30,7 +43,9 @@ export const macchiato = {
   red: '#ed8796',
 }
 
-// Helper function to get the current theme colors
-export function getThemeColors(theme: Theme) {
-  return theme === 'dark' ? macchiato : latte
+export const themes = {
+  light: latte,
+  dark: macchiato,
 }
+
+export type ThemeName = keyof typeof themes
