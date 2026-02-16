@@ -1,6 +1,10 @@
-FROM oven/bun:1 AS frontend-builder
-WORKDIR /frontend
-COPY frontend/ ./
+# Frontend build
+FROM oven/bun:slim AS frontend-builder
+WORKDIR /app
+
+COPY package.json bun.lock svelte.config.ts vite.config.ts tsconfig.json ./
+COPY src/client ./src/client
+COPY static ./static
 RUN bun ci && bun run build
 
 # Build stage with cargo-chef for dependency caching
@@ -10,7 +14,8 @@ WORKDIR /app
 
 # Prepare recipe
 FROM chef AS planner
-COPY . .
+COPY Cargo.toml Cargo.lock ./
+COPY src/server ./src/server
 RUN cargo chef prepare --recipe-path recipe.json
 
 # Build dependencies (this layer is cached)
@@ -19,11 +24,12 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # Build application
-COPY . .
+COPY Cargo.toml Cargo.lock ./
+COPY src/server ./src/server
 RUN cargo build --release
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 WORKDIR /app
 
 # Install CA certificates for HTTPS
@@ -31,10 +37,11 @@ RUN apt-get update && \
   apt-get install -y ca-certificates && \
   rm -rf /var/lib/apt/lists/*
 
-# Copy binary from builder
+# Rust binary
 COPY --from=builder /app/target/release/blackfiles /app/blackfiles
 
-COPY --from=frontend-builder /frontend/dist /app/static
+# Built frontend
+COPY --from=frontend-builder /app/build /app/static
 
 # Expose port
 EXPOSE 8000

@@ -7,6 +7,7 @@ use tokio::io::AsyncRead;
 use std::path::Path;
 
 pub const STORAGE_ROOT: &str = "storage";
+pub const STATIC_ROOT: &str = "static";
 
 #[derive(Serialize)]
 #[serde(crate = "rocket::serde")]

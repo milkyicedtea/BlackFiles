@@ -1,8 +1,42 @@
-.idea
+# ignore real compose file, but not template
+docker-compose.yml
+!template.docker-compose.yml
 
+# editors/ides folders
+.idea
+.vscode
+
+# output folders
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
 /target
+
+# depencies
+node_modules
+
+# os specific files
+.DS_Store
+Thumbs.db
+
+# env
+.env
+.env.*
+!.env.example
+!.env.test
+
+# bundlers
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
 
 # storage folder
 storage
 
-.env
+# static folder (used for production, created automatically)
+static
+
+# misc
+**/directory-tree.txt

@@ -1,3 +1,5 @@
+# cp this file to docker-compose.yml and edit as needed in production
+
 services:
   blackfiles:
     build: .
@@ -15,6 +17,7 @@ services:
     networks:
         - caddy_net
 
+# remove caddy_net in dev or if not needed
 networks:
     caddy_net:
         external: true
