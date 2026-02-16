@@ -4,7 +4,6 @@ WORKDIR /app
 
 COPY package.json bun.lock svelte.config.ts vite.config.ts tsconfig.json ./
 COPY src/client ./src/client
-COPY static ./static
 RUN bun ci && bun run build
 
 # Build stage with cargo-chef for dependency caching
