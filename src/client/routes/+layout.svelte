@@ -30,7 +30,7 @@
 </script>
 
 <svelte:head>
-  <link rel="icon" type="image/svg" href="../core/assets/favicon.io"/>
+  <link rel="icon" type="image/svg" href="/favicon.ico"/>
 </svelte:head>
 
 <SvelteTheme

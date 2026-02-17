@@ -17,8 +17,8 @@ fn prepare_dirs() {
     // create storage directory if it doesn't exist
     std::fs::create_dir_all(shared::STORAGE_ROOT).ok();
 
-    // create static directory if it doesn't exist
-    std::fs::create_dir_all(shared::STATIC_ROOT).ok();
+    // create build directory if it doesn't exist (it always should, but just in case)
+    std::fs::create_dir_all(shared::BUILD_ROOT).ok();
 }
 
 #[launch]
@@ -30,6 +30,6 @@ fn rocket() -> _ {
     rocket::build()
         .mount("/api", routes![check_auth, login, list_root, list_directory])
         .mount("/files", routes![download])
-        .mount("/", FileServer::from("static"))
+        .mount("/", FileServer::from(shared::BUILD_ROOT))
         .mount("/", routes![frontend_fallback])
 }

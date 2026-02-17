@@ -13,7 +13,7 @@
   }
 </script>
 
-<div class="mb-4 flex justify-between items-center">
+<div class="mb-4 flex justify-between items-center select-none">
   <div class="flex items-center">
     <img width="40rem" src={blackFolder} alt="" draggable="false" />
     &nbsp;
@@ -21,6 +21,6 @@
   </div>
 
   <button class="btn btn-soft" style={styles.button} onclick={toggleTheme}>
-    {currentTheme === 'dark' ? '☀️ Latte' : '🌙 Macchiato'}
+    {currentTheme === 'dark' ? '🌻 Latte' : '🌺 Macchiato'}
   </button>
 </div>

@@ -10,6 +10,7 @@
   import Header from "@client/components/Header.svelte"
   import Breadcrumb from "@client/components/Breadcrumb.svelte"
   import GoogleSpin from "@client/components/GoogleSpin.svelte"
+  import FileIcon from "@client/components/FileIcon.svelte"
 
   let files: FileItem[] = $state([])
   let loading = $state(true)
@@ -120,7 +121,9 @@
                 onkeydown={(e) => e.key === 'Enter' && handleFileClick(file)}
               >
                 <div class="flex items-start gap-3">
-                  <span class="text-xl mt-0.5">{file.is_dir ? '📁' : '📄'}</span>
+                  <div class="mt-0.5">
+                    <FileIcon fileName={file.name} isDirectory={file.is_dir} size="md" />
+                  </div>
                   <div class="flex-1 min-w-0">
                     <div
                       class="text-sm truncate"
@@ -160,7 +163,7 @@
                 onclick={() => handleFileClick(file)}
                 onkeydown={(e) => e.key === 'Enter' && handleFileClick(file)}
               >
-                <span class="text-xl">{file.is_dir ? '📁' : '📄'}</span>
+                <FileIcon fileName={file.name} isDirectory={file.is_dir} size="md" />
                 <span class="text-sm truncate" style={file.is_dir ? styles.directory : styles.text}>
                   {file.name}
                 </span>

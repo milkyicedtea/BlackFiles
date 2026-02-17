@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY package.json bun.lock svelte.config.ts vite.config.ts tsconfig.json ./
 COPY src/client ./src/client
+COPY static ./static
 RUN bun ci && bun run build
 
 # Build stage with cargo-chef for dependency caching
@@ -40,7 +41,7 @@ RUN apt-get update && \
 COPY --from=builder /app/target/release/blackfiles /app/blackfiles
 
 # Built frontend
-COPY --from=frontend-builder /app/build /app/static
+COPY --from=frontend-builder /app/build /app/build
 
 # Expose port
 EXPOSE 8000
