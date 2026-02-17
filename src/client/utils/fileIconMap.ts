@@ -10,45 +10,38 @@ export type IconMappings = Record<string, IconMapping>
 
 const mappings = iconMappings as IconMappings
 
+const fileNameToIcon: Record<string, string> = {}
+const extensionToIcon: Record<string, string> = {}
+
 export const DEFAULT_FILE_ICON = '_file'
 export const DEFAULT_FOLDER_ICON = '_folder'
 
+for (const [iconName, mapping] of Object.entries(mappings)) {
+  mapping.fileNames?.forEach(name => {
+    fileNameToIcon[name.toLowerCase()] = iconName
+  })
+  mapping.fileExtensions?.forEach(ext => {
+    extensionToIcon[ext.toLowerCase()] = iconName
+  })
+}
+
 export function getFileIcon(fileName: string, isDirectory: boolean): string {
-  if (isDirectory) {
-    return DEFAULT_FOLDER_ICON
-  }
+  if (isDirectory) return DEFAULT_FOLDER_ICON
+
 
   const lowerFileName = fileName.toLowerCase()
 
-  for (const [iconName, mapping] of Object.entries(mappings)) {
-    if (mapping.fileNames) {
-      for (const name of mapping.fileNames) {
-        if (lowerFileName === name.toLowerCase()) {
-          return iconName
-        }
-      }
-    }
-  }
+  if (lowerFileName in fileNameToIcon) return fileNameToIcon[lowerFileName]
 
   const extension = getFileExtension(lowerFileName)
-  if (extension) {
-    for (const [iconName, mapping] of Object.entries(mappings)) {
-      if (mapping.fileExtensions) {
-        if (mapping.fileExtensions.includes(extension)) {
-          return iconName
-        }
-      }
-    }
-  }
+  if (extension && extension in extensionToIcon) return extensionToIcon[extension]
 
   return DEFAULT_FILE_ICON
 }
 
 function getFileExtension(fileName: string): string | null {
   const lastDot = fileName.lastIndexOf('.')
-  if (lastDot === -1 || lastDot === 0) {
-    return null
-  }
+  if (lastDot <= 0) return null
   return fileName.substring(lastDot + 1)
 }
 
