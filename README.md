@@ -45,6 +45,3 @@ And pretty light on the frontend too, using [SvelteKit 5](https://svelte.dev/) w
   but you can also use a volume
 - Setting up a reverse proxy is _recommended_ but not needed. The API's default port is `8000`. 
 - No matter what reverse proxy, it will require creating your own bridge network (name it accordingly, default is `caddy_net`) network and adding a new service to the `docker-compose.yml` file. (if you don't have a global or system proxy)
-
-## License
-[MIT](https://opensource.org/license/mit)
