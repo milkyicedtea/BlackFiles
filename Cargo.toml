@@ -5,6 +5,9 @@ edition = "2024"
 
 [dependencies]
 dotenvy = { version = "0.15.7" }
+hex = "0.4.3"
+lofty = "0.23.3"
+md5 = "0.8.0"
 rocket = { version = "0.5.1", features = ["json"] }
 tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "fs"]}
 
