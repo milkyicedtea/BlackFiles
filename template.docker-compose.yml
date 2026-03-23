@@ -3,6 +3,7 @@
 services:
   blackfiles:
     build: .
+    image: milkyicedtea/blackfiles
     container_name: blackfiles
     env_file:
       .env
