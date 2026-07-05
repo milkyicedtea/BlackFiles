@@ -2,10 +2,9 @@
 FROM oven/bun:slim AS frontend-builder
 WORKDIR /app
 
-COPY package.json bun.lock svelte.config.ts vite.config.ts tsconfig.json ./
+COPY package.json bun.lock index.html vite.config.ts tsconfig.json ./
 COPY src/client ./src/client
-COPY static ./static
-RUN bun ci && bun run build
+RUN bun install && bun run build
 
 # Build stage with cargo-chef for dependency caching
 FROM rust:1.90-slim AS chef
@@ -41,10 +40,6 @@ RUN apt-get update && \
 COPY --from=builder /app/target/release/blackfiles /app/blackfiles
 
 # Built frontend
-COPY --from=frontend-builder /app/build /app/build
+COPY --from=frontend-builder /app/dist /app/dist
 
-# Expose port
-EXPOSE 8000
-
-# Run the application
 CMD ["/app/blackfiles"]

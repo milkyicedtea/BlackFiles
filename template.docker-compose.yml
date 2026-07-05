@@ -2,23 +2,52 @@
 
 services:
   blackfiles:
-    build: .
     image: milkyicedtea/blackfiles
+    build: .
     container_name: blackfiles
     env_file:
       .env
+    expose:
+      - "4000"
     # ports:
-    #   - "4100:8000"
+    #   - "4000:4000"
     volumes:
       - ./storage:/app/storage
-    restart: unless-stopped
-    environment:
-      - ROCKET_ADDRESS=0.0.0.0
-      - ROCKET_PORT=8000
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
-        - caddy_net
+      - blackfiles_net
+      - caddy_net
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18-trixie
+    container_name: blackfiles-db
+    env_file: .env
+    expose:
+      - 5432
+#    ports:
+#      - "5432:5432"
+    volumes:
+      - ./dbinit:/docker-entrypoint-initdb.d
+      - blackfiles-pgdata:/var/lib/postgresql
+    networks:
+      - blackfiles_net
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+volumes:
+    blackfiles-pgdata:
 
 # remove caddy_net in dev or if not needed
 networks:
-    caddy_net:
-        external: true
+  blackfiles_net:
+    driver: bridge
+  caddy_net:
+    external: true

@@ -11,8 +11,10 @@ docker-compose.yml
 .vercel
 .netlify
 .wrangler
+.tanstack
 /.svelte-kit
 /build
+/dist
 /target
 
 # depencies
@@ -26,7 +28,6 @@ Thumbs.db
 .env
 .env.*
 !.env.example
-!.env.test
 
 # bundlers
 vite.config.js.timestamp-*
