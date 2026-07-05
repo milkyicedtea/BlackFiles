@@ -36,11 +36,47 @@ export function setActiveSession(v: boolean) {
 }
 
 function extractErrorMessage(err: unknown): string {
-  if (err && typeof err === 'object' && 'response' in err) {
-    const e = err as { response?: { data?: { error?: string } }; message?: string }
-    return e.response?.data?.error || e.message || 'Request failed'
+  if (err instanceof Error && !('response' in err)) {
+    return err.message
   }
-  if (err instanceof Error) return err.message
+
+  if (err && typeof err === 'object' && 'response' in err) {
+    const e = err as {
+      response?: {
+        data?: unknown
+        status?: number
+        statusText?: string
+      }
+      message?: string
+    }
+
+    const data = e.response?.data
+
+    if (typeof data === 'string') {
+      return data
+    }
+
+    if (data && typeof data === 'object') {
+      if ('error' in data && typeof data.error === 'string') {
+        return data.error
+      }
+
+      if ('message' in data && typeof data.message === 'string') {
+        return data.message
+      }
+
+      if ('description' in data && typeof data.description === 'string') {
+        return data.description
+      }
+
+      if ('reason' in data && typeof data.reason === 'string') {
+        return data.reason
+      }
+    }
+
+    return e.message || e.response?.statusText || 'Request failed'
+  }
+
   return 'Request failed'
 }
 
@@ -89,6 +125,6 @@ api.interceptors.response.use(
       })
     }
 
-    return Promise.reject(err)
+    return Promise.reject(new Error(extractErrorMessage(err)))
   }
 )

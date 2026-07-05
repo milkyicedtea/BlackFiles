@@ -2,7 +2,7 @@ import { useAuth } from '@local/hooks/authContext'
 import { AppShell, MantineProvider } from '@mantine/core'
 import { ModalsProvider } from '@mantine/modals'
 import { Notifications } from '@mantine/notifications'
-import { createRootRouteWithContext, Outlet, redirect, Scripts } from '@tanstack/react-router'
+import {createRootRouteWithContext, HeadContent, Outlet, redirect, Scripts} from '@tanstack/react-router'
 import { Suspense } from 'react'
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
@@ -30,6 +30,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient; auth
       user = data.user
     } catch {
       setActiveSession(false)
+      return { auth: { user: null, loading: false}}
     }
 
     const isPublicRoute = PUBLIC_ROUTES.some(
@@ -64,6 +65,7 @@ function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <HeadContent/>
       <MantineProvider defaultColorScheme="auto" theme={theme}>
         <ModalsProvider>
           <Notifications />
@@ -94,7 +96,6 @@ function RootLayout() {
           </UploadProvider>
         </ModalsProvider>
       </MantineProvider>
-      <Scripts />
     </QueryClientProvider>
   )
 }

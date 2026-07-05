@@ -28,5 +28,10 @@ export default defineConfig({
         ws: true,
       },
     },
+  },
+
+  build: {
+    minify: 'oxc',
+    sourcemap: false,
   }
 })

@@ -10,12 +10,27 @@ import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
 import 'mantine-datatable/styles.css'
 
+
 const router = createRouter({
   routeTree,
   context: {
     queryClient,
     auth: defaultAuthState,
   },
+  defaultErrorComponent: ({ error }) => {
+    console.error('Router error:', error)
+
+    const message = error instanceof Error ? error.message : "Something went wrong!"
+
+    return (
+      <div style={{ padding:'1rem' }}>
+        <h2> Unhandled error </h2>
+        <pre style={{whiteSpace: 'pre-wrap'}}>
+          {message}
+        </pre>
+      </div>
+    )
+  }
 })
 
 declare module '@tanstack/react-router' {
