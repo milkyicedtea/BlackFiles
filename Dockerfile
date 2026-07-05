@@ -3,6 +3,7 @@ FROM oven/bun:slim AS frontend-builder
 WORKDIR /app
 
 COPY package.json bun.lock index.html vite.config.ts tsconfig.json ./
+COPY public ./public
 COPY src/client ./src/client
 RUN bun install && bun run build
 
