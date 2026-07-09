@@ -1,5 +1,5 @@
 # Frontend build
-FROM oven/bun:slim AS frontend-builder
+FROM oven/bun:1-slim AS frontend-builder
 WORKDIR /app
 
 COPY package.json bun.lock index.html vite.config.ts tsconfig.json ./
@@ -8,7 +8,7 @@ COPY src/client ./src/client
 RUN bun install && bun run build
 
 # Build stage with cargo-chef for dependency caching
-FROM rust:1.90-slim AS chef
+FROM rust:1-slim-trixie AS chef
 RUN cargo install cargo-chef
 WORKDIR /app
 
@@ -29,7 +29,7 @@ COPY src/server ./src/server
 RUN cargo build --release
 
 # Runtime stage
-FROM debian:trixie-slim
+FROM debian:13-slim
 WORKDIR /app
 
 # Install CA certificates for HTTPS
