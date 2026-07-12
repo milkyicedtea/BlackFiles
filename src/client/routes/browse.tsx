@@ -1,5 +1,6 @@
 import { BrowsePathBar } from '@local/components/BrowsePathBar'
 import { FileIcon } from '@local/components/FileIcon'
+import { ProtectedPage } from '@local/components/ProtectedPage'
 import { usePermission } from '@local/hooks/authContext'
 import { useUploader } from '@local/hooks/UploadContext'
 import { useDirectory } from '@local/hooks/useDirectory'
@@ -22,7 +23,11 @@ export const Route = createFileRoute('/browse')({
   validateSearch: (search: Record<string, unknown>): BrowseSearch => ({
     path: typeof search.path === 'string' ? search.path : undefined,
   }),
-  component: BrowsePage,
+  component: () => (
+    <ProtectedPage>
+      <BrowsePage />
+    </ProtectedPage>
+  ),
 })
 
 const PREVIEWABLE_EXTENSIONS = new Set([
@@ -206,7 +211,7 @@ function BrowsePage() {
   ]
 
   return (
-    <div style={{ padding: '1rem' }}>
+    <div>
       <Stack gap="sm">
         <Group justify="space-between" align="flex-end">
           <BrowsePathBar
@@ -243,6 +248,7 @@ function BrowsePage() {
           highlightOnHover
           verticalSpacing="sm"
           horizontalSpacing="md"
+          minHeight="10rem"
           fetching={loading}
           columns={columns}
           records={sortedRecords}

@@ -1,3 +1,4 @@
+import { ProtectedPage } from '@local/components/ProtectedPage'
 import { openRoleFormModal } from '@local/components/RoleFormModal'
 import { useRoles } from '@local/hooks/useRoles'
 import type { RoleWithPermissions } from '@local/types/auth'
@@ -19,7 +20,11 @@ import type { DataTableColumn } from 'mantine-datatable'
 import { DataTable } from 'mantine-datatable'
 
 export const Route = createFileRoute('/settings/roles')({
-  component: RolesPage,
+  component: () => (
+    <ProtectedPage requireAdmin>
+      <RolesPage />
+    </ProtectedPage>
+  ),
 })
 
 function RolesPage() {
@@ -147,7 +152,7 @@ function RolesPage() {
   ]
 
   return (
-    <div style={{ padding: '1rem' }}>
+    <div>
       <Group justify="space-between" mb="md">
         <Title order={4}>Role Management</Title>
         {canManage && (

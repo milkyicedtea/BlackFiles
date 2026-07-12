@@ -2,7 +2,7 @@ import { useAuth } from '@local/hooks/authContext'
 import { AppShell, MantineProvider } from '@mantine/core'
 import { ModalsProvider } from '@mantine/modals'
 import { Notifications } from '@mantine/notifications'
-import {createRootRouteWithContext, HeadContent, Outlet, redirect, Scripts} from '@tanstack/react-router'
+import { createRootRouteWithContext, HeadContent, Outlet } from '@tanstack/react-router'
 import { Suspense } from 'react'
 import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
@@ -21,27 +21,44 @@ import { type QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const PUBLIC_ROUTES = ['/login']
 
+async function loadAuth(allowRefresh: boolean): Promise<AuthState> {
+  try {
+    const { data } = await api.get<CheckResponse>('/check', {
+      _skipAuthRefresh: true,
+      _silent: true,
+    })
+    setActiveSession(true)
+    return { user: data.user, loading: false }
+  } catch {
+    // Missing or expired access token. Refresh once on protected routes only;
+    // login should not keep probing refresh and bouncing back into itself.
+  }
+
+  if (allowRefresh) {
+    try {
+      await api.post('/auth/refresh', undefined, { _skipAuthRefresh: true, _silent: true })
+      const { data } = await api.get<CheckResponse>('/check', {
+        _skipAuthRefresh: true,
+        _silent: true,
+      })
+      setActiveSession(true)
+      return { user: data.user, loading: false }
+    } catch {
+      // No valid session.
+    }
+  }
+
+  setActiveSession(false)
+  return { user: null, loading: false }
+}
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient; auth: AuthState }>()({
   beforeLoad: async ({ location }) => {
-    let user = null
-    try {
-      const { data } = await api.get<CheckResponse>('/check')
-      setActiveSession(true)
-      user = data.user
-    } catch {
-      setActiveSession(false)
-      return { auth: { user: null, loading: false}}
-    }
-
     const isPublicRoute = PUBLIC_ROUTES.some(
       (route) => location.pathname === route || location.pathname.startsWith(route)
     )
 
-    if (!user && !isPublicRoute) {
-      throw redirect({ to: '/login' })
-    }
-
-    return { auth: { user, loading: false } }
+    return { auth: await loadAuth(!isPublicRoute) }
   },
   head: () => ({
     meta: [
@@ -65,7 +82,7 @@ function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <HeadContent/>
+      <HeadContent />
       <MantineProvider defaultColorScheme="auto" theme={theme}>
         <ModalsProvider>
           <Notifications />
@@ -74,7 +91,7 @@ function RootLayout() {
               header={{ height: 54 }}
               navbar={
                 user
-                  ? { width: 220, breakpoint: 'sm', collapsed: { mobile: !mobileOpened } }
+                  ? { width: 180, breakpoint: 'sm', collapsed: { mobile: !mobileOpened } }
                   : undefined
               }
               padding="md"

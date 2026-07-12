@@ -1,6 +1,6 @@
 use crate::guards::{AuthenticatedUser, check_permission};
 use crate::models::PaginationParams;
-use crate::shared::{FileEntry, STORAGE_ROOT, path_to_web_string, sanitize_path};
+use crate::shared::{FileEntry, STORAGE_ROOT, path_to_web_string, sanitize_path, filter_by_search_term};
 use deadpool_postgres::Pool;
 use rocket::State;
 use rocket::http::Status;
@@ -95,12 +95,7 @@ pub async fn list_directory(
     let mut entries = read_dir_entries(&safe_path).await?;
 
     // Filter by search term
-    if let Some(ref search) = pagination.search
-        && !search.is_empty()
-    {
-        let lower = search.to_lowercase();
-        entries.retain(|e| e.name.to_lowercase().contains(&lower));
-    }
+    filter_by_search_term(&pagination, &mut entries);
 
     let total = entries.len() as i64;
 
@@ -127,12 +122,7 @@ pub async fn list_root(
     let mut entries = read_dir_entries(Path::new("")).await?;
 
     // Filter by search term
-    if let Some(ref search) = pagination.search
-        && !search.is_empty()
-    {
-        let lower = search.to_lowercase();
-        entries.retain(|e| e.name.to_lowercase().contains(&lower));
-    }
+    filter_by_search_term(&pagination, &mut entries);
 
     let total = entries.len() as i64;
 

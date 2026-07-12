@@ -24,10 +24,10 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-let logoutCallback: (() => void) | null = null
+let logoutCallback: (() => Promise<void>) | null = null
 let activeSession = false
 
-export function setLogoutCallback(cb: () => void) {
+export function setLogoutCallback(cb: () => Promise<void>) {
   logoutCallback = cb
 }
 
@@ -36,46 +36,14 @@ export function setActiveSession(v: boolean) {
 }
 
 function extractErrorMessage(err: unknown): string {
-  if (err instanceof Error && !('response' in err)) {
-    return err.message
+  if (axios.isAxiosError<{ error?: unknown }>(err)) {
+    const error = err.response?.data?.error
+    if (typeof error === 'string') return error
+
+    return err.message || err.response?.statusText || 'Request failed'
   }
 
-  if (err && typeof err === 'object' && 'response' in err) {
-    const e = err as {
-      response?: {
-        data?: unknown
-        status?: number
-        statusText?: string
-      }
-      message?: string
-    }
-
-    const data = e.response?.data
-
-    if (typeof data === 'string') {
-      return data
-    }
-
-    if (data && typeof data === 'object') {
-      if ('error' in data && typeof data.error === 'string') {
-        return data.error
-      }
-
-      if ('message' in data && typeof data.message === 'string') {
-        return data.message
-      }
-
-      if ('description' in data && typeof data.description === 'string') {
-        return data.description
-      }
-
-      if ('reason' in data && typeof data.reason === 'string') {
-        return data.reason
-      }
-    }
-
-    return e.message || e.response?.statusText || 'Request failed'
-  }
+  if (err instanceof Error) return err.message
 
   return 'Request failed'
 }
@@ -109,7 +77,7 @@ api.interceptors.response.use(
       } catch {
         if (activeSession) {
           activeSession = false
-          if (logoutCallback) logoutCallback()
+          if (logoutCallback) await logoutCallback()
         }
       }
     }

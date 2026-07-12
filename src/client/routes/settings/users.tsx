@@ -1,6 +1,7 @@
 import { openCreateUserModal } from '@local/components/CreateUserModal'
 import { openDeleteUserModal } from '@local/components/DeleteUserModal'
 import { openPasswordModal } from '@local/components/PasswordModal'
+import { ProtectedPage } from '@local/components/ProtectedPage'
 import { useUsers } from '@local/hooks/useUsers'
 import type { User } from '@local/types/auth'
 import {
@@ -21,7 +22,11 @@ import type { DataTableColumn } from 'mantine-datatable'
 import { DataTable } from 'mantine-datatable'
 
 export const Route = createFileRoute('/settings/users')({
-  component: UsersPage,
+  component: () => (
+    <ProtectedPage requireAdmin>
+      <UsersPage />
+    </ProtectedPage>
+  ),
 })
 
 function UsersPage() {
@@ -162,7 +167,7 @@ function UsersPage() {
   ]
 
   return (
-    <div style={{ padding: '1rem' }}>
+    <div>
       <Group justify="space-between" mb="md">
         <Title order={4}>User Management</Title>
         {canCreate && (

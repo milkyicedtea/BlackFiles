@@ -1,4 +1,4 @@
-import { setLogoutCallback } from '@local/hooks/api'
+import { api, setLogoutCallback } from '@local/hooks/api'
 import { defaultAuthState } from '@local/hooks/authContext'
 import { queryClient } from '@local/queryClient'
 import { routeTree } from '@local/routeTree.gen'
@@ -10,7 +10,6 @@ import '@mantine/core/styles.css'
 import '@mantine/notifications/styles.css'
 import 'mantine-datatable/styles.css'
 
-
 const router = createRouter({
   routeTree,
   context: {
@@ -20,17 +19,15 @@ const router = createRouter({
   defaultErrorComponent: ({ error }) => {
     console.error('Router error:', error)
 
-    const message = error instanceof Error ? error.message : "Something went wrong!"
+    const message = error instanceof Error ? error.message : 'Something went wrong!'
 
     return (
-      <div style={{ padding:'1rem' }}>
+      <div style={{ padding: '1rem' }}>
         <h2> Unhandled error </h2>
-        <pre style={{whiteSpace: 'pre-wrap'}}>
-          {message}
-        </pre>
+        <pre style={{ whiteSpace: 'pre-wrap' }}>{message}</pre>
       </div>
     )
-  }
+  },
 })
 
 declare module '@tanstack/react-router' {
@@ -40,9 +37,14 @@ declare module '@tanstack/react-router' {
 }
 
 // Auto-logout on session expiry (401 refresh failure)
-setLogoutCallback(() => {
+setLogoutCallback(async () => {
+  await api
+    .post('/auth/logout', undefined, { _skipAuthRefresh: true, _silent: true })
+    .catch((err) => {
+      console.log('setLogoutCallback error:', err)
+    })
   queryClient.clear()
-  router.invalidate()
+  await router.invalidate()
 })
 
 const rootElement = document.getElementById('root')

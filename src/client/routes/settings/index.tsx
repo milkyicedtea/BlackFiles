@@ -1,10 +1,15 @@
+import { ProtectedPage } from '@local/components/ProtectedPage'
 import { isAdmin, useAuth } from '@local/hooks/authContext'
 import { Container, Paper, SimpleGrid, Text, Title } from '@mantine/core'
 import { IconShieldLock, IconUsers } from '@tabler/icons-react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/settings/')({
-  component: SettingsPage,
+  component: () => (
+    <ProtectedPage requireAdmin>
+      <SettingsPage />
+    </ProtectedPage>
+  ),
 })
 
 function SettingsPage() {

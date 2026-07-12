@@ -110,7 +110,7 @@ export function SideNav() {
       <Divider mt={2} />
       <Flex align="center" justify="space-between" px="sm" pt="xs">
         <ActionIcon variant="default" onClick={toggleColorScheme} size="md">
-          {colorScheme === 'dark' ? <IconMoon size={16} /> : <IconSun size={16}/>}
+          {colorScheme === 'dark' ? <IconMoon size={16} /> : <IconSun size={16} />}
         </ActionIcon>
         {user && (
           <Button size="xs" variant="subtle" color="red" onClick={handleLogout}>

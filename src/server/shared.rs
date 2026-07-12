@@ -1,4 +1,4 @@
-use crate::models::{RoleWithPermissions, User};
+use crate::models::{PaginationParams, RoleWithPermissions, User};
 use tokio_postgres::Row;
 
 use rocket::http::{Cookie, Header, Status};
@@ -7,6 +7,7 @@ use rocket::serde::{Serialize, json::Json};
 use rocket::{Request, Response};
 use std::path::Path;
 use std::path::PathBuf;
+use tokio::fs;
 use tokio::io::AsyncRead;
 
 pub const STORAGE_ROOT: &str = "storage";
@@ -20,6 +21,16 @@ pub fn server_error() -> (Status, Json<serde_json::Value>) {
         Status::InternalServerError,
         Json(serde_json::json!({"error": "Server error"})),
     )
+}
+#[catch(default)]
+pub fn api_error(status: Status, _: &Request<'_>) -> (Status, Json<serde_json::Value>) {
+    let message = if status == Status::InternalServerError {
+        "Server error".to_owned()
+    } else {
+        status.reason().unwrap_or("Request failed").to_owned()
+    };
+
+    (status, Json(serde_json::json!({"error": message})))
 }
 
 pub fn bad_request(msg: &str) -> (Status, Json<serde_json::Value>) {
@@ -194,4 +205,33 @@ pub fn path_to_web_string(path: &Path) -> String {
         .map(|p| p.to_string_lossy().into_owned())
         .collect::<Vec<_>>()
         .join("/")
+}
+
+pub fn filter_by_search_term(pagination: &PaginationParams, entries: &mut Vec<FileEntry>) {
+    if let Some(ref search) = pagination.search
+        && !search.is_empty()
+    {
+        let lower = search.to_lowercase();
+        entries.retain(|e| e.name.to_lowercase().contains(&lower));
+    }
+}
+
+pub async fn ensure_file_does_not_exist(
+    path: &Path,
+) -> Result<(), (Status, Json<serde_json::Value>)> {
+    match fs::metadata(path).await {
+        Ok(_) => {
+            let filename = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("file");
+
+            Err(conflict(&format!(
+                "File '{}' already exists",
+                filename
+            )))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err(server_error()),
+    }
 }

@@ -1,8 +1,5 @@
 use crate::guards::{AuthenticatedUser, check_permission};
-use crate::shared::{
-    FileResponse, STORAGE_ROOT, bad_request, conflict, forbidden, not_found, sanitize_path,
-    server_error,
-};
+use crate::shared::{FileResponse, STORAGE_ROOT, bad_request, forbidden, not_found, sanitize_path, server_error, ensure_file_does_not_exist};
 use deadpool_postgres::Pool;
 use rocket::State;
 use rocket::data::{Data, ToByteUnit};
@@ -144,13 +141,7 @@ pub async fn upload(
         }
     } else {
         // Full-file upload — backwards compatible
-        if fs::metadata(&full_path).await.is_ok() {
-            let filename = full_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("file");
-            return Err(conflict(&format!("File '{}' already exists", filename)));
-        }
+        ensure_file_does_not_exist(&full_path).await?;
 
         let mut file = File::create(&full_path).await.map_err(|_| server_error())?;
 
@@ -273,13 +264,7 @@ pub async fn upload_ws(
     }
     let full_path = Path::new(STORAGE_ROOT).join(&safe_path);
 
-    if fs::metadata(&full_path).await.is_ok() {
-        let filename = full_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("file");
-        return Err(conflict(&format!("File '{}' already exists", filename)));
-    }
+    ensure_file_does_not_exist(&full_path).await?;
 
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent)
