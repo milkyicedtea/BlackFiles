@@ -9,7 +9,6 @@ import { useCallback, useState } from 'react'
 export interface RoleFormValues {
   name: string
   display_name: string
-  hierarchy: number
   color: string
   permissionNames: Array<string>
 }
@@ -58,22 +57,28 @@ export function useRoles() {
   const saveMutation = useMutation({
     mutationFn: async (values: RoleFormValues & { roleId?: number }) => {
       const payload = {
-        name: values.name,
         display_name: values.display_name,
-        hierarchy: values.hierarchy,
         color: values.color,
         permissions: values.permissionNames,
       }
-      const successMessage = values.roleId ? 'Role updated' : 'Role created'
+
       if (values.roleId) {
-        await api.put<void>(`/roles/${values.roleId}`, payload, { _successMessage: successMessage })
+        await api.put<void>(`/roles/${values.roleId}`, payload, {
+          _successMessage: 'Role updated',
+        })
       } else {
-        await api.post<void>('/roles', payload, { _successMessage: successMessage })
+        await api.post<void>('/roles', { name: values.name, ...payload }, {
+          _successMessage: 'Role created',
+        })
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.roles.all })
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.roles.all }),
+  })
+
+  const moveMutation = useMutation({
+    mutationFn: ({ roleId, direction }: { roleId: number; direction: 'up' | 'down' }) =>
+      api.post<void>(`/roles/${roleId}/move`, { direction }, { _successMessage: 'Role moved' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.roles.all }),
   })
 
   const deleteMutation = useMutation({
@@ -93,6 +98,10 @@ export function useRoles() {
 
   async function handleSave(values: RoleFormValues, roleId?: number) {
     await saveMutation.mutateAsync({ ...values, roleId })
+  }
+
+  async function handleMove(roleId: number, direction: 'up' | 'down') {
+    await moveMutation.mutateAsync({ roleId, direction })
   }
 
   async function handleDelete(roleId: number) {
@@ -120,6 +129,7 @@ export function useRoles() {
 
     // Mutation handlers
     handleSave,
+    handleMove,
     handleDelete,
 
     // Derived

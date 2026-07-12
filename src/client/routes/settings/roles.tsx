@@ -14,8 +14,16 @@ import {
   Tooltip,
 } from '@mantine/core'
 import { modals } from '@mantine/modals'
-import { IconAlertCircle, IconEdit, IconPlus, IconTrash } from '@tabler/icons-react'
+import {
+  IconAlertCircle,
+  IconChevronDown,
+  IconChevronUp,
+  IconEdit,
+  IconPlus,
+  IconTrash,
+} from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
+import { useState } from 'react'
 import type { DataTableColumn } from 'mantine-datatable'
 import { DataTable } from 'mantine-datatable'
 
@@ -34,6 +42,7 @@ function RolesPage() {
     loading,
 
     handleSave,
+    handleMove,
     handleDelete,
     canManage,
 
@@ -47,6 +56,24 @@ function RolesPage() {
     setLimit,
     total,
   } = useRoles()
+  const [movingRole, setMovingRole] = useState<{
+    roleId: number
+    direction: 'up' | 'down'
+  } | null>(null)
+
+  async function moveRole(roleId: number, direction: 'up' | 'down') {
+    if (movingRole) return
+
+    setMovingRole({ roleId, direction })
+    try {
+      await handleMove(roleId, direction)
+    } catch {
+    } finally {
+      setMovingRole(null)
+    }
+  }
+
+
 
   const columns: Array<DataTableColumn<RoleWithPermissions>> = [
     {
@@ -79,9 +106,45 @@ function RolesPage() {
       filtering: displayNameFilter !== '',
     },
     {
-      accessor: 'hierarchy',
-      title: 'Hierarchy',
+      accessor: 'position',
+      title: 'Position',
       textAlign: 'center',
+      render: (r) => {
+        const isMoving = movingRole?.roleId === r.id
+        return (
+          <Group justify="center" gap={2} wrap="nowrap">
+            <Text size="sm">{r.position}</Text>
+            {canManage && r.name !== 'admin' && (
+              <>
+                <Tooltip label={`Move ${r.display_name} up`}>
+                  <ActionIcon
+                    aria-label={`Move ${r.display_name} up`}
+                    variant="subtle"
+                    size="xs"
+                    loading={isMoving && movingRole.direction === 'up'}
+                    disabled={movingRole !== null || r.position === 1}
+                    onClick={() => void moveRole(r.id, 'up')}
+                  >
+                    <IconChevronUp size={14} />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label={`Move ${r.display_name} down`}>
+                  <ActionIcon
+                    aria-label={`Move ${r.display_name} down`}
+                    variant="subtle"
+                    size="xs"
+                    loading={isMoving && movingRole.direction === 'down'}
+                    disabled={movingRole !== null}
+                    onClick={() => void moveRole(r.id, 'down')}
+                  >
+                    <IconChevronDown size={14} />
+                  </ActionIcon>
+                </Tooltip>
+              </>
+            )}
+          </Group>
+        )
+      },
     },
     {
       accessor: 'permissions',
@@ -110,7 +173,6 @@ function RolesPage() {
                     openRoleFormModal(permissions, (values) => handleSave(values, r.id), {
                       name: r.name,
                       display_name: r.display_name,
-                      hierarchy: r.hierarchy,
                       color: r.color,
                       permissionNames: [...r.permissions],
                     })

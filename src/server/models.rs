@@ -78,7 +78,7 @@ pub struct Role {
     pub id: i32,
     pub name: String,
     pub display_name: String,
-    pub hierarchy: i32,
+    pub position: i32,
     pub color: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -90,7 +90,7 @@ pub struct RoleWithPermissions {
     pub id: i32,
     pub name: String,
     pub display_name: String,
-    pub hierarchy: i32,
+    pub position: i32,
     pub color: String,
     pub permissions: Vec<String>,
     pub created_at: DateTime<Utc>,
@@ -102,7 +102,6 @@ pub struct RoleWithPermissions {
 pub struct CreateRoleRequest {
     pub name: String,
     pub display_name: String,
-    pub hierarchy: i32,
     pub color: Option<String>,
     pub permissions: Vec<String>,
 }
@@ -111,9 +110,21 @@ pub struct CreateRoleRequest {
 #[serde(crate = "rocket::serde")]
 pub struct UpdateRoleRequest {
     pub display_name: String,
-    pub hierarchy: i32,
     pub color: Option<String>,
     pub permissions: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(crate = "rocket::serde", rename_all = "snake_case")]
+pub enum MoveDirection {
+    Up,
+    Down,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct MoveRoleRequest {
+    pub direction: MoveDirection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

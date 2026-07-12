@@ -7,7 +7,9 @@ CREATE TABLE IF NOT EXISTS roles (
     id SERIAL PRIMARY KEY,
     name VARCHAR(50) UNIQUE NOT NULL,
     display_name VARCHAR(100) NOT NULL,
-    hierarchy INTEGER NOT NULL DEFAULT 1,
+    position INTEGER NOT NULL,
+    CONSTRAINT roles_position_positive CHECK (position > 0),
+    CONSTRAINT roles_position_key UNIQUE (position) DEFERRABLE INITIALLY IMMEDIATE,
     color VARCHAR(20) DEFAULT 'gray',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()

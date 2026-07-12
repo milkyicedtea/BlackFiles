@@ -3,7 +3,7 @@ use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 use chrono::{Duration, Utc};
-use deadpool_postgres::Pool;
+use deadpool_postgres::{GenericClient, Pool};
 use jsonwebtoken::{EncodingKey, Header, encode};
 use rand::random;
 use rocket::State;
@@ -15,14 +15,25 @@ use uuid::Uuid;
 use crate::guards::{AuthenticatedUser, check_permission};
 use crate::models::{
     AuthError, Claims, CreateRoleRequest, CreateUserRequest, LoginRequest, LoginResponse,
-    LogoutResponse, PaginationParams, RoleWithPermissions, UpdateRoleRequest,
-    UpdateUserPasswordRequest, UpdateUserRoleRequest, User,
+    LogoutResponse, MoveDirection, MoveRoleRequest, PaginationParams, RoleWithPermissions,
+    UpdateRoleRequest, UpdateUserPasswordRequest, UpdateUserRoleRequest, User,
 };
 use crate::shared::{
     assign_role_permissions, bad_request, conflict, db_error, forbidden, get_client,
     make_access_cookie, make_refresh_cookie, not_found, row_to_role_with_permissions, row_to_user,
     server_error, unauthorized,
 };
+
+const ROLE_POSITION_LOCK: i64 = 1_976_101;
+
+async fn lock_role_positions(
+    transaction: &deadpool_postgres::Transaction<'_>,
+) -> Result<(), tokio_postgres::Error> {
+    transaction
+        .execute("SELECT pg_advisory_xact_lock($1)", &[&ROLE_POSITION_LOCK])
+        .await?;
+    Ok(())
+}
 
 // Password hashing
 
@@ -170,9 +181,29 @@ pub async fn login(
 
 /// POST /api/auth/logout
 #[post("/auth/logout")]
-pub async fn logout(jar: &CookieJar<'_>, _user: AuthenticatedUser) -> Json<LogoutResponse> {
+pub async fn logout(pool: &State<Pool>, jar: &CookieJar<'_>, user: AuthenticatedUser) -> Json<LogoutResponse> {
+    if let Some(refresh_token) = jar.get("refresh_token"){
+        let token_hash = hash_token(refresh_token.value());
+
+        match get_client(pool).await {
+            Ok(client) => {
+                if let Err(e) = client
+                    .execute(
+                        "DELETE FROM sessions WHERE user_id = $1 AND token_hash = $2",
+                        &[&user.id, &token_hash],
+                    )
+                    .await
+                {
+                    eprintln!("Failed to delete session during logout: {e}");
+                }
+            }
+            Err(_) => eprintln!("Failed to get DB connection during logout"),
+        }
+    }
+
     jar.remove(Cookie::build("accessToken").path("/"));
     jar.remove(Cookie::build("refreshToken").path("/api/auth"));
+
     Json(LogoutResponse {
         message: "Logged out".to_string(),
     })
@@ -513,10 +544,10 @@ pub async fn list_roles(
         .get::<_, i64>(0);
 
     let data_sql = format!(
-        "SELECT id, name, display_name, hierarchy, color, created_at, updated_at
+        "SELECT id, name, display_name, position, color, created_at, updated_at
          FROM roles r
          {}
-         ORDER BY hierarchy DESC, name ASC
+         ORDER BY position ASC
          LIMIT ${} OFFSET ${}",
         where_clause,
         param_refs.len() + 1,
@@ -565,7 +596,7 @@ pub async fn get_role(
 
     let row = client
         .query_opt(
-            "SELECT id, name, display_name, hierarchy, color, created_at, updated_at
+            "SELECT id, name, display_name, position, color, created_at, updated_at
              FROM roles WHERE id = $1",
             &[&id],
         )
@@ -590,7 +621,7 @@ pub async fn get_role(
     Ok(Json(row_to_role_with_permissions(&row, permissions)))
 }
 
-/// POST /api/roles — Create a new role
+/// POST /api/roles — Create a new role at the final position
 #[post("/roles", data = "<create>")]
 pub async fn create_role(
     pool: &State<Pool>,
@@ -608,54 +639,51 @@ pub async fn create_role(
         return Err(bad_request("Name and display_name are required"));
     }
 
-    let client = get_client(pool).await?;
+    let color = create.color.as_deref().unwrap_or("gray");
+    let mut client = get_client(pool).await?;
+    let transaction = client.transaction().await.map_err(db_error)?;
+    lock_role_positions(&transaction).await.map_err(db_error)?;
 
-    let existing = client
+    if transaction
         .query_opt("SELECT id FROM roles WHERE name = $1", &[&create.name])
         .await
-        .map_err(db_error)?;
-
-    if existing.is_some() {
+        .map_err(db_error)?
+        .is_some()
+    {
         return Err(conflict("Role already exists"));
     }
 
-    let color = create.color.as_deref().unwrap_or("gray");
-
-    let role = client
+    let role = transaction
         .query_one(
-            "INSERT INTO roles (name, display_name, hierarchy, color)
-             VALUES ($1, $2, $3, $4)
-             RETURNING id, name, display_name, hierarchy, color, created_at, updated_at",
-            &[
-                &create.name,
-                &create.display_name,
-                &create.hierarchy,
-                &color,
-            ],
+            "INSERT INTO roles (name, display_name, position, color)
+             SELECT $1, $2, COALESCE(MAX(position), 0) + 1, $3 FROM roles
+             RETURNING id, name, display_name, position, color, created_at, updated_at",
+            &[&create.name, &create.display_name, &color],
         )
         .await
-        .map_err(|e| {
-            eprintln!("DB error: {e}");
-            server_error()
-        })?;
+        .map_err(db_error)?;
 
     let role_id: i32 = role.get("id");
+    assign_role_permissions(&transaction, role_id, &create.permissions)
+        .await
+        .map_err(db_error)?;
 
-    assign_role_permissions(&client, role_id, &create.permissions).await;
-
-    Ok(Json(RoleWithPermissions {
+    let response = RoleWithPermissions {
         id: role_id,
         name: role.get("name"),
         display_name: role.get("display_name"),
-        hierarchy: role.get("hierarchy"),
+        position: role.get("position"),
         color: role.get("color"),
         permissions: create.permissions.clone(),
         created_at: role.get("created_at"),
         updated_at: role.get("updated_at"),
-    }))
+    };
+
+    transaction.commit().await.map_err(db_error)?;
+    Ok(Json(response))
 }
 
-/// PUT /api/roles/<id> — Update a role
+/// PUT /api/roles/<id> — Update a role without changing its position
 #[put("/roles/<id>", data = "<update>")]
 pub async fn update_role(
     pool: &State<Pool>,
@@ -674,42 +702,137 @@ pub async fn update_role(
         return Err(bad_request("display_name is required"));
     }
 
-    let client = get_client(pool).await?;
     let color = update.color.as_deref().unwrap_or("gray");
+    let mut client = get_client(pool).await?;
+    let transaction = client.transaction().await.map_err(db_error)?;
 
-    let row = client
+    let row = transaction
         .query_opt(
-            "UPDATE roles SET display_name = $1, hierarchy = $2, color = $3
-             WHERE id = $4
-             RETURNING id, name, display_name, hierarchy, color, created_at, updated_at",
-            &[&update.display_name, &update.hierarchy, &color, &id],
+            "UPDATE roles SET display_name = $1, color = $2
+             WHERE id = $3
+             RETURNING id, name, display_name, position, color, created_at, updated_at",
+            &[&update.display_name, &color, &id],
         )
         .await
         .map_err(db_error)?
         .ok_or_else(|| not_found("Role not found"))?;
 
-    if let Err(e) = client
+    transaction
         .execute("DELETE FROM role_permissions WHERE role_id = $1", &[&id])
         .await
-    {
-        eprintln!("Failed to clear role permissions: {e}");
-    }
+        .map_err(db_error)?;
+    assign_role_permissions(&transaction, id, &update.permissions)
+        .await
+        .map_err(db_error)?;
 
-    assign_role_permissions(&client, id, &update.permissions).await;
-
-    Ok(Json(RoleWithPermissions {
+    let response = RoleWithPermissions {
         id: row.get("id"),
         name: row.get("name"),
         display_name: row.get("display_name"),
-        hierarchy: row.get("hierarchy"),
+        position: row.get("position"),
         color: row.get("color"),
         permissions: update.permissions.clone(),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
-    }))
+    };
+
+    transaction.commit().await.map_err(db_error)?;
+    Ok(Json(response))
 }
 
-/// DELETE /api/roles/<id> — Delete a role
+/// POST /api/roles/<id>/move — Exchange a role with its adjacent position
+#[post("/roles/<id>/move", data = "<move_request>")]
+pub async fn move_role(
+    pool: &State<Pool>,
+    user: AuthenticatedUser,
+    id: i32,
+    move_request: Json<MoveRoleRequest>,
+) -> Result<Json<RoleWithPermissions>, (Status, Json<serde_json::Value>)> {
+    if !check_permission(pool, user.id, "manage_roles")
+        .await
+        .unwrap_or(false)
+    {
+        return Err(forbidden());
+    }
+
+    let mut client = get_client(pool).await?;
+    let transaction = client.transaction().await.map_err(db_error)?;
+    lock_role_positions(&transaction).await.map_err(db_error)?;
+
+    let role = transaction
+        .query_opt(
+            "SELECT id, name, position FROM roles WHERE id = $1 FOR UPDATE",
+            &[&id],
+        )
+        .await
+        .map_err(db_error)?
+        .ok_or_else(|| not_found("Role not found"))?;
+    let name: String = role.get("name");
+    if name == "admin" {
+        return Err(bad_request("Cannot move the admin role"));
+    }
+
+    let position: i32 = role.get("position");
+    let neighbor_position = match &move_request.direction {
+        MoveDirection::Up if position == 1 => return Err(conflict("Role is already first")),
+        MoveDirection::Up => position - 1,
+        MoveDirection::Down => position + 1,
+    };
+    let neighbor = transaction
+        .query_opt(
+            "SELECT id, position FROM roles WHERE position = $1 FOR UPDATE",
+            &[&neighbor_position],
+        )
+        .await
+        .map_err(db_error)?
+        .ok_or_else(|| match &move_request.direction {
+            MoveDirection::Up => conflict("Role is already first"),
+            MoveDirection::Down => conflict("Role is already last"),
+        })?;
+    let neighbor_id: i32 = neighbor.get("id");
+
+    transaction
+        .batch_execute("SET CONSTRAINTS roles_position_key DEFERRED")
+        .await
+        .map_err(db_error)?;
+    transaction
+        .execute(
+            "UPDATE roles
+             SET position = CASE
+                 WHEN id = $1 THEN $2::INTEGER
+                 WHEN id = $3 THEN $4::INTEGER
+             END
+             WHERE id = $1 OR id = $3",
+            &[&id, &neighbor_position, &neighbor_id, &position],
+        )
+        .await
+        .map_err(db_error)?;
+
+    let row = transaction
+        .query_one(
+            "SELECT id, name, display_name, position, color, created_at, updated_at
+             FROM roles WHERE id = $1",
+            &[&id],
+        )
+        .await
+        .map_err(db_error)?;
+    let permission_rows = transaction
+        .query(
+            "SELECT p.name FROM permissions p
+             JOIN role_permissions rp ON p.id = rp.permission_id
+             WHERE rp.role_id = $1 ORDER BY p.group_name, p.name",
+            &[&id],
+        )
+        .await
+        .map_err(db_error)?;
+    let permissions = permission_rows.iter().map(|row| row.get("name")).collect();
+    let response = row_to_role_with_permissions(&row, permissions);
+
+    transaction.commit().await.map_err(db_error)?;
+    Ok(Json(response))
+}
+
+/// DELETE /api/roles/<id> — Delete a role and close the position gap
 #[delete("/roles/<id>")]
 pub async fn delete_role(
     pool: &State<Pool>,
@@ -723,38 +846,58 @@ pub async fn delete_role(
         return Err(forbidden());
     }
 
-    let client = get_client(pool).await?;
+    let mut client = get_client(pool).await?;
+    let transaction = client.transaction().await.map_err(db_error)?;
+    lock_role_positions(&transaction).await.map_err(db_error)?;
 
-    if let Ok(row) = client
-        .query_one("SELECT name FROM roles WHERE id = $1", &[&id])
-        .await
-    {
-        let name: String = row.get("name");
-        if name == "admin" {
-            return Err(bad_request("Cannot delete the admin role"));
-        }
-    }
-
-    let deleted = client
-        .execute("DELETE FROM roles WHERE id = $1", &[&id])
-        .await
-        .map_err(db_error)?;
-
-    if deleted == 0 {
-        return Err(not_found("Role not found"));
-    }
-
-    if let Err(e) = client
-        .execute(
-            "UPDATE users SET role_id = (SELECT id FROM roles WHERE name = 'viewer')
-             WHERE role_id = $1",
+    let role = transaction
+        .query_opt(
+            "SELECT name, position FROM roles WHERE id = $1 FOR UPDATE",
             &[&id],
         )
         .await
-    {
-        eprintln!("Failed to reassign users: {e}");
+        .map_err(db_error)?
+        .ok_or_else(|| not_found("Role not found"))?;
+    let name: String = role.get("name");
+    if name == "admin" {
+        return Err(bad_request("Cannot delete the admin role"));
     }
+    if name == "viewer" {
+        return Err(bad_request("Cannot delete the viewer role"));
+    }
+    let position: i32 = role.get("position");
 
+    let viewer = transaction
+        .query_opt("SELECT id FROM roles WHERE name = 'viewer' FOR UPDATE", &[])
+        .await
+        .map_err(db_error)?
+        .ok_or_else(|| not_found("Viewer role not found"))?;
+    let viewer_id: i32 = viewer.get("id");
+
+    transaction
+        .execute(
+            "UPDATE users SET role_id = $1 WHERE role_id = $2",
+            &[&viewer_id, &id],
+        )
+        .await
+        .map_err(db_error)?;
+    transaction
+        .execute("DELETE FROM roles WHERE id = $1", &[&id])
+        .await
+        .map_err(db_error)?;
+    transaction
+        .batch_execute("SET CONSTRAINTS roles_position_key DEFERRED")
+        .await
+        .map_err(db_error)?;
+    transaction
+        .execute(
+            "UPDATE roles SET position = position - 1 WHERE position > $1",
+            &[&position],
+        )
+        .await
+        .map_err(db_error)?;
+
+    transaction.commit().await.map_err(db_error)?;
     Ok(Json(serde_json::json!({"success": true})))
 }
 

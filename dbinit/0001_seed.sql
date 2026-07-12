@@ -22,9 +22,9 @@ ON CONFLICT (name) DO NOTHING;
 
 -- ══════════════════ ROLES ══════════════════
 
-INSERT INTO roles (name, display_name, hierarchy, color) VALUES
-('admin',  'Administrator', 100, 'red'),
-('viewer', 'Viewer',         10, 'blue')
+INSERT INTO roles (name, display_name, position, color) VALUES
+('admin',  'Administrator', 1, 'red'),
+('viewer', 'Viewer',         2, 'blue')
 ON CONFLICT (name) DO NOTHING;
 
 -- ══════════════════ ROLE PERMISSIONS ══════════════════

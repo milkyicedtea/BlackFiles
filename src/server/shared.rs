@@ -1,4 +1,5 @@
 use crate::models::{PaginationParams, RoleWithPermissions, User};
+use deadpool_postgres::GenericClient;
 use tokio_postgres::Row;
 
 use rocket::http::{Cookie, Header, Status};
@@ -94,7 +95,7 @@ pub fn row_to_role_with_permissions(row: &Row, permissions: Vec<String>) -> Role
         id: row.get("id"),
         name: row.get("name"),
         display_name: row.get("display_name"),
-        hierarchy: row.get("hierarchy"),
+        position: row.get("position"),
         color: row.get("color"),
         permissions,
         created_at: row.get("created_at"),
@@ -102,25 +103,24 @@ pub fn row_to_role_with_permissions(row: &Row, permissions: Vec<String>) -> Role
     }
 }
 
-/// Assign permissions to a role (idempotent — skips duplicates).
+/// Assign permissions to a role, ignoring duplicate request values.
 pub async fn assign_role_permissions(
-    client: &deadpool_postgres::Object,
+    client: &impl GenericClient,
     role_id: i32,
     permissions: &[String],
-) {
+) -> Result<(), tokio_postgres::Error> {
     for perm_name in permissions {
-        if let Err(e) = client
+        client
             .execute(
                 "INSERT INTO role_permissions (role_id, permission_id)
                  SELECT $1, id FROM permissions WHERE name = $2
                  ON CONFLICT DO NOTHING",
                 &[&role_id, &perm_name],
             )
-            .await
-        {
-            eprintln!("Failed to assign permission '{perm_name}': {e}");
-        }
+            .await?;
     }
+
+    Ok(())
 }
 
 /// Build an access-token cookie set for the whole site.

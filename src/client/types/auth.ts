@@ -22,7 +22,7 @@ export interface RoleWithPermissions {
   id: number
   name: string
   display_name: string
-  hierarchy: number
+  position: number
   color: string
   permissions: Array<string>
   created_at: string

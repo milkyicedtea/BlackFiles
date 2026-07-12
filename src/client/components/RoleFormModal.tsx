@@ -5,7 +5,6 @@ import {
   ColorInput,
   Divider,
   Group,
-  NumberInput,
   Paper,
   Stack,
   Text,
@@ -24,7 +23,6 @@ const PERMISSION_GROUP_NAMES: Record<string, string> = {
 export interface RoleFormValues {
   name: string
   display_name: string
-  hierarchy: number
   color: string
   permissionNames: Array<string>
 }
@@ -42,7 +40,6 @@ function RoleForm({ editingRole, initialValues, permissions, onSave }: RoleFormP
     initialValues: {
       name: initialValues?.name ?? '',
       display_name: initialValues?.display_name ?? '',
-      hierarchy: initialValues?.hierarchy ?? 1,
       color: initialValues?.color ?? '#868e96',
       permissionNames: initialValues?.permissionNames ?? [],
     },
@@ -53,8 +50,12 @@ function RoleForm({ editingRole, initialValues, permissions, onSave }: RoleFormP
   })
 
   const groupedPermissions = useMemo(() => {
-    return permissions.reduce<Record<string, Array<Permission>>>((acc, p) => {
-      acc[p.group_name].push(p)
+    return permissions.reduce<Record<string, Array<Permission>>>((acc, permission) => {
+      if (!acc[permission.group_name]) {
+        acc[permission.group_name] = []
+      }
+
+      acc[permission.group_name].push(permission)
       return acc
     }, {})
   }, [permissions])
@@ -96,16 +97,7 @@ function RoleForm({ editingRole, initialValues, permissions, onSave }: RoleFormP
         required
         {...form.getInputProps('display_name')}
       />
-      <Group grow>
-        <NumberInput
-          label="Hierarchy"
-          description="Higher = more privileges (admin=100)"
-          min={1}
-          max={999}
-          {...form.getInputProps('hierarchy')}
-        />
-        <ColorInput label="Color" {...form.getInputProps('color')} />
-      </Group>
+      <ColorInput label="Color" {...form.getInputProps('color')} />
 
       <Divider label="Permissions" labelPosition="center" />
 
@@ -148,7 +140,6 @@ export function openRoleFormModal(
   editingRole?: {
     name: string
     display_name: string
-    hierarchy: number
     color: string
     permissionNames: Array<string>
   }
