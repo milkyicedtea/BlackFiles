@@ -67,9 +67,13 @@ export function useRoles() {
           _successMessage: 'Role updated',
         })
       } else {
-        await api.post<void>('/roles', { name: values.name, ...payload }, {
-          _successMessage: 'Role created',
-        })
+        await api.post<void>(
+          '/roles',
+          { name: values.name, ...payload },
+          {
+            _successMessage: 'Role created',
+          }
+        )
       }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.roles.all }),

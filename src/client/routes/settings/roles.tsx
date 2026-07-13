@@ -23,9 +23,9 @@ import {
   IconTrash,
 } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
 import type { DataTableColumn } from 'mantine-datatable'
 import { DataTable } from 'mantine-datatable'
+import { useState } from 'react'
 
 export const Route = createFileRoute('/settings/roles')({
   component: () => (
@@ -72,8 +72,6 @@ function RolesPage() {
       setMovingRole(null)
     }
   }
-
-
 
   const columns: Array<DataTableColumn<RoleWithPermissions>> = [
     {

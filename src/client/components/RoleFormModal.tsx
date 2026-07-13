@@ -44,7 +44,7 @@ function RoleForm({ editingRole, initialValues, permissions, onSave }: RoleFormP
       permissionNames: initialValues?.permissionNames ?? [],
     },
     validate: {
-      name: (v) => (!v ? 'Required' : null),
+      name: (v) => (!v ? 'Required' : /[A-Z]/.test(v) ? 'Lowercase letters only' : null),
       display_name: (v) => (!v ? 'Required' : null),
     },
   })
@@ -90,6 +90,10 @@ function RoleForm({ editingRole, initialValues, permissions, onSave }: RoleFormP
         disabled={editingRole}
         required
         {...form.getInputProps('name')}
+        onChange={(e) => {
+          const lowerValue = e.currentTarget.value.toLowerCase()
+          form.setFieldValue('name', lowerValue)
+        }}
       />
       <TextInput
         label="Display Name"

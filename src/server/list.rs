@@ -1,6 +1,8 @@
 use crate::guards::{AuthenticatedUser, check_permission};
 use crate::models::PaginationParams;
-use crate::shared::{FileEntry, STORAGE_ROOT, path_to_web_string, sanitize_path, filter_by_search_term};
+use crate::shared::{
+    FileEntry, STORAGE_ROOT, filter_by_search_term, path_to_web_string, sanitize_path,
+};
 use deadpool_postgres::Pool;
 use rocket::State;
 use rocket::http::Status;

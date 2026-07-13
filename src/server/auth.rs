@@ -181,8 +181,12 @@ pub async fn login(
 
 /// POST /api/auth/logout
 #[post("/auth/logout")]
-pub async fn logout(pool: &State<Pool>, jar: &CookieJar<'_>, user: AuthenticatedUser) -> Json<LogoutResponse> {
-    if let Some(refresh_token) = jar.get("refresh_token"){
+pub async fn logout(
+    pool: &State<Pool>,
+    jar: &CookieJar<'_>,
+    user: AuthenticatedUser,
+) -> Json<LogoutResponse> {
+    if let Some(refresh_token) = jar.get("refresh_token") {
         let token_hash = hash_token(refresh_token.value());
 
         match get_client(pool).await {

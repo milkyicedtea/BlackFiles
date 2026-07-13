@@ -1,6 +1,6 @@
 import { ProtectedPage } from '@local/components/ProtectedPage'
 import { isAdmin, useAuth } from '@local/hooks/authContext'
-import { Container, Paper, SimpleGrid, Text, Title } from '@mantine/core'
+import { Box, Paper, SimpleGrid, Text, Title } from '@mantine/core'
 import { IconShieldLock, IconUsers } from '@tabler/icons-react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 
@@ -18,11 +18,11 @@ function SettingsPage() {
   const canManageRoles = isAdmin(user)
 
   return (
-    <Container size="sm" py="xl">
+    <Box size="sm">
       <Title order={3} mb="lg">
         Settings
       </Title>
-      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+      <SimpleGrid cols={{ base: 1, sm: 3, lg: 4 }} spacing="md">
         {canManageUsers && (
           <Paper
             component={Link}
@@ -63,6 +63,6 @@ function SettingsPage() {
           You don't have permission to manage settings.
         </Text>
       )}
-    </Container>
+    </Box>
   )
 }

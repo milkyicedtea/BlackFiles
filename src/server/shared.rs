@@ -226,10 +226,7 @@ pub async fn ensure_file_does_not_exist(
                 .and_then(|name| name.to_str())
                 .unwrap_or("file");
 
-            Err(conflict(&format!(
-                "File '{}' already exists",
-                filename
-            )))
+            Err(conflict(&format!("File '{}' already exists", filename)))
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(_) => Err(server_error()),

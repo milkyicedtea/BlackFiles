@@ -1,5 +1,8 @@
 use crate::guards::{AuthenticatedUser, check_permission};
-use crate::shared::{FileResponse, STORAGE_ROOT, bad_request, forbidden, not_found, sanitize_path, server_error, ensure_file_does_not_exist};
+use crate::shared::{
+    FileResponse, STORAGE_ROOT, bad_request, ensure_file_does_not_exist, forbidden, not_found,
+    sanitize_path, server_error,
+};
 use deadpool_postgres::Pool;
 use rocket::State;
 use rocket::data::{Data, ToByteUnit};

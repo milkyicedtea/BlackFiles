@@ -15,7 +15,7 @@ function CreateUserForm({ roles, onCreateUser }: CreateUserFormProps) {
   const form = useForm<CreateFormValues>({
     initialValues: { username: '', password: '', role_name: 'viewer' },
     validate: {
-      username: (v) => (!v ? 'Required' : null),
+      username: (v) => (!v ? 'Required' : /[A-Z]/.test(v) ? 'Lowercase letters only' : null),
       password: (v) => (!v ? 'Required' : null),
     },
   })
@@ -33,7 +33,15 @@ function CreateUserForm({ roles, onCreateUser }: CreateUserFormProps) {
   return (
     <form onSubmit={form.onSubmit(handleSubmit)}>
       <Stack gap="sm">
-        <TextInput label="Username" required {...form.getInputProps('username')} />
+        <TextInput
+          label="Username"
+          required
+          {...form.getInputProps('username')}
+          onChange={(e) => {
+            const lowerValue = e.currentTarget.value.toLowerCase()
+            form.setFieldValue('username', lowerValue)
+          }}
+        />
         <PasswordInput label="Password" required {...form.getInputProps('password')} />
         <Select
           label="Role"
