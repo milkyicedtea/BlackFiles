@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::fs::File;
 
-
 #[get("/files/<path..>")]
 pub async fn download(
     pool: &State<Pool>,
@@ -58,7 +57,6 @@ pub async fn download(
         size: file_size,
     })
 }
-
 
 /// Delete a file or directory — DELETE /api/files/<path..>
 #[delete("/files/<path..>")]
@@ -111,4 +109,3 @@ pub async fn delete_path(
 
     Ok(Json(serde_json::json!({"success": true})))
 }
-

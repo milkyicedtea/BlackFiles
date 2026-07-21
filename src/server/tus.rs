@@ -1,11 +1,11 @@
 use base64::Engine;
 use deadpool_postgres::Pool;
+use rocket::State;
 use rocket::data::{Data, ToByteUnit};
 use rocket::http::{Header, Status};
 use rocket::request::{FromRequest, Outcome, Request};
 use rocket::response::{Responder, Response};
 use rocket::serde::{Serialize, json::Json};
-use rocket::State;
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use tokio::fs::{self, OpenOptions};
@@ -13,11 +13,12 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio_postgres::error::SqlState;
 use uuid::Uuid;
 
-use crate::guards::{check_permission, AuthenticatedUser};
+use crate::guards::{AuthenticatedUser, check_permission};
 use crate::shared::{
-    bad_request, conflict, db_error, forbidden, get_client, not_found, path_to_web_string,
-    sanitize_path, server_error, STORAGE_ROOT,
+    STORAGE_ROOT, bad_request, conflict, db_error, forbidden, get_client, not_found,
+    path_to_web_string, sanitize_path, server_error,
 };
+use crate::upload_links::hash_token;
 
 const TUS_VERSION: &str = "1.0.0";
 const TUS_CHUNK_SIZE: u64 = 8 * 1024 * 1024;
@@ -118,10 +119,10 @@ impl TusResponse {
         }
     }
 
-    fn created(id: Uuid) -> Self {
+    fn created(location: String) -> Self {
         Self {
             status: Status::Created,
-            location: Some(format!("/api/uploads/{id}")),
+            location: Some(location),
             offset: Some(0),
             length: None,
             options: false,
@@ -166,7 +167,9 @@ impl TusResponse {
 impl<'r> Responder<'r, 'static> for TusResponse {
     fn respond_to(self, _: &'r Request<'_>) -> rocket::response::Result<'static> {
         let mut response = Response::build();
-        response.status(self.status).header(Header::new("Tus-Resumable", TUS_VERSION));
+        response
+            .status(self.status)
+            .header(Header::new("Tus-Resumable", TUS_VERSION));
 
         if let Some(location) = self.location {
             response.header(Header::new("Location", location));
@@ -197,18 +200,33 @@ fn temporary_path(id: Uuid) -> PathBuf {
         .join(format!("{id}.part"))
 }
 
+fn filename_from_metadata(metadata: &str) -> Result<PathBuf, ApiError> {
+    let metadata = parse_metadata(metadata)?;
+    let filename = metadata
+        .get("filename")
+        .ok_or_else(|| bad_request("Upload metadata must include filename"))?;
+    let filename = PathBuf::from(filename);
+    if filename.components().count() != 1 {
+        return Err(bad_request("Invalid filename"));
+    }
+    sanitize_path(filename).ok_or_else(|| bad_request("Invalid filename"))
+}
+
 fn destination_from_metadata(metadata: &str) -> Result<(String, PathBuf), ApiError> {
     let metadata = parse_metadata(metadata)?;
     let filename = metadata
         .get("filename")
         .ok_or_else(|| bad_request("Upload metadata must include filename"))?;
-    let target_directory = metadata.get("targetPath").map(String::as_str).unwrap_or_default();
-
     let filename = PathBuf::from(filename);
     if filename.components().count() != 1 {
         return Err(bad_request("Invalid filename"));
     }
     let filename = sanitize_path(filename).ok_or_else(|| bad_request("Invalid filename"))?;
+
+    let target_directory = metadata
+        .get("targetPath")
+        .map(String::as_str)
+        .unwrap_or_default();
 
     let target_directory = if target_directory.is_empty() {
         PathBuf::new()
@@ -257,7 +275,7 @@ async fn require_upload_permission(pool: &Pool, user: &AuthenticatedUser) -> Res
     Ok(())
 }
 
-async fn cleanup_expired_uploads(pool: &Pool) {
+pub(crate) async fn cleanup_expired_uploads(pool: &Pool) {
     let client = match pool.get().await {
         Ok(client) => client,
         Err(error) => {
@@ -266,7 +284,10 @@ async fn cleanup_expired_uploads(pool: &Pool) {
         }
     };
     let rows = match client
-        .query("DELETE FROM upload_sessions WHERE expires_at <= NOW() RETURNING id", &[])
+        .query(
+            "DELETE FROM upload_sessions WHERE expires_at <= NOW() RETURNING id",
+            &[],
+        )
         .await
     {
         Ok(rows) => rows,
@@ -351,7 +372,9 @@ pub(crate) async fn create_tus_upload(
         Err(_) => return Err(server_error()),
     }
     if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent).await.map_err(|_| server_error())?;
+        fs::create_dir_all(parent)
+            .await
+            .map_err(|_| server_error())?;
     }
     let temp_directory = Path::new(STORAGE_ROOT).join(TEMP_DIRECTORY);
     fs::create_dir_all(&temp_directory)
@@ -380,12 +403,14 @@ pub(crate) async fn create_tus_upload(
     if let Err(error) = inserted {
         fs::remove_file(&temporary).await.ok();
         if error.code() == Some(&SqlState::UNIQUE_VIOLATION) {
-            return Err(conflict("An upload to this destination is already in progress"));
+            return Err(conflict(
+                "An upload to this destination is already in progress",
+            ));
         }
         return Err(db_error(error));
     }
 
-    Ok(TusResponse::created(id))
+    Ok(TusResponse::created(format!("/api/uploads/{id}")))
 }
 
 #[head("/uploads/<id>")]
@@ -426,7 +451,9 @@ pub(crate) async fn patch_tus_upload(
     let id = parse_upload_id(id)?;
     require_upload_permission(pool, &user).await?;
     if !headers.is_offset_octet_stream() {
-        return Err(bad_request("PATCH requires application/offset+octet-stream"));
+        return Err(bad_request(
+            "PATCH requires application/offset+octet-stream",
+        ));
     }
 
     let requested_offset = headers.upload_offset()?;
@@ -506,13 +533,20 @@ pub(crate) async fn patch_tus_upload(
     Ok(TusResponse::patched(next_offset))
 }
 
-async fn finalize_upload(pool: &Pool, id: Uuid, user_id: Uuid, target_path: &str) -> Result<(), ApiError> {
+async fn finalize_upload(
+    pool: &Pool,
+    id: Uuid,
+    user_id: Uuid,
+    target_path: &str,
+) -> Result<(), ApiError> {
     let temporary = temporary_path(id);
     let destination = Path::new(STORAGE_ROOT).join(target_path);
 
     match fs::hard_link(&temporary, &destination).await {
         Ok(()) => {
-            fs::remove_file(&temporary).await.map_err(|_| server_error())?;
+            fs::remove_file(&temporary)
+                .await
+                .map_err(|_| server_error())?;
             let client = get_client(pool).await?;
             if let Err(error) = client
                 .execute(
@@ -521,7 +555,9 @@ async fn finalize_upload(pool: &Pool, id: Uuid, user_id: Uuid, target_path: &str
                 )
                 .await
             {
-                eprintln!("Completed upload {id} could not be removed from the session table: {error}");
+                eprintln!(
+                    "Completed upload {id} could not be removed from the session table: {error}"
+                );
             }
             Ok(())
         }
@@ -555,6 +591,295 @@ pub(crate) async fn terminate_tus_upload(
         .query_opt(
             "DELETE FROM upload_sessions WHERE id = $1 AND user_id = $2 RETURNING id",
             &[&id, &user.id],
+        )
+        .await
+        .map_err(db_error)?
+        .ok_or_else(|| not_found("Upload not found"))?;
+    let id: Uuid = row.get("id");
+    fs::remove_file(temporary_path(id)).await.ok();
+
+    Ok(TusResponse::terminated())
+}
+
+#[options("/public/upload-links/<_token>/uploads")]
+pub(crate) fn public_tus_options(_token: &str) -> TusResponse {
+    TusResponse::options()
+}
+
+#[post("/public/upload-links/<token>/uploads")]
+pub(crate) async fn create_public_tus_upload(
+    pool: &State<Pool>,
+    token: &str,
+    headers: TusHeaders,
+) -> Result<TusResponse, ApiError> {
+    cleanup_expired_uploads(pool).await;
+
+    let length = headers.upload_length()?;
+    if length > MAX_UPLOAD_SIZE {
+        return Err(bad_request("Upload exceeds the maximum size"));
+    }
+    let filename = filename_from_metadata(headers.metadata()?)?;
+    let token_hash = hash_token(token);
+
+    let mut client = get_client(pool).await?;
+    let transaction = client.transaction().await.map_err(db_error)?;
+    let link = transaction
+        .query_opt(
+            "SELECT id, target_path FROM upload_links
+             WHERE token_hash = $1 AND used_at IS NULL
+             FOR UPDATE",
+            &[&token_hash],
+        )
+        .await
+        .map_err(db_error)?
+        .ok_or_else(|| not_found("Upload link is invalid or has already been used"))?;
+    let link_id: Uuid = link.get("id");
+    let target_directory = PathBuf::from(link.get::<_, String>("target_path"));
+    let relative_path = target_directory.join(filename);
+    let target_path = path_to_web_string(&relative_path);
+    let destination = Path::new(STORAGE_ROOT).join(&relative_path);
+
+    match fs::metadata(&destination).await {
+        Ok(_) => return Err(conflict("A file with this name already exists")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Err(server_error()),
+    }
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)
+            .await
+            .map_err(|_| server_error())?;
+    }
+    let temp_directory = Path::new(STORAGE_ROOT).join(TEMP_DIRECTORY);
+    fs::create_dir_all(&temp_directory)
+        .await
+        .map_err(|_| server_error())?;
+
+    let id = Uuid::new_v4();
+    let temporary = temporary_path(id);
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .await
+        .map_err(|_| server_error())?;
+
+    let length = as_i64(length)?;
+    let inserted = transaction
+        .execute(
+            "INSERT INTO upload_sessions (id, upload_link_id, target_path, upload_length, expires_at)
+             VALUES ($1, $2, $3, $4, NOW() + INTERVAL '24 hours')",
+            &[&id, &link_id, &target_path, &length],
+        )
+        .await;
+    if let Err(error) = inserted {
+        fs::remove_file(&temporary).await.ok();
+        if error.code() == Some(&SqlState::UNIQUE_VIOLATION) {
+            return Err(conflict(
+                "An upload for this link or destination is already in progress",
+            ));
+        }
+        return Err(db_error(error));
+    }
+    transaction.commit().await.map_err(db_error)?;
+
+    Ok(TusResponse::created(format!(
+        "/api/public/upload-links/{token}/uploads/{id}"
+    )))
+}
+
+#[head("/public/upload-links/<token>/uploads/<id>")]
+pub(crate) async fn head_public_tus_upload(
+    pool: &State<Pool>,
+    token: &str,
+    _headers: TusHeaders,
+    id: &str,
+) -> Result<TusResponse, ApiError> {
+    let id = parse_upload_id(id)?;
+    let token_hash = hash_token(token);
+    let client = get_client(pool).await?;
+    let row = client
+        .query_opt(
+            "SELECT s.upload_length, s.upload_offset
+             FROM upload_sessions s
+             JOIN upload_links l ON l.id = s.upload_link_id
+             WHERE s.id = $1 AND l.token_hash = $2 AND l.used_at IS NULL
+               AND s.expires_at > NOW()",
+            &[&id, &token_hash],
+        )
+        .await
+        .map_err(db_error)?
+        .ok_or_else(|| not_found("Upload not found"))?;
+
+    Ok(TusResponse::head(
+        as_u64(row.get::<_, i64>("upload_offset"))?,
+        as_u64(row.get::<_, i64>("upload_length"))?,
+    ))
+}
+
+#[patch("/public/upload-links/<token>/uploads/<id>", data = "<data>")]
+pub(crate) async fn patch_public_tus_upload(
+    pool: &State<Pool>,
+    token: &str,
+    headers: TusHeaders,
+    id: &str,
+    data: Data<'_>,
+) -> Result<TusResponse, ApiError> {
+    let id = parse_upload_id(id)?;
+    if !headers.is_offset_octet_stream() {
+        return Err(bad_request(
+            "PATCH requires application/offset+octet-stream",
+        ));
+    }
+    let requested_offset = headers.upload_offset()?;
+    let content_length = headers.content_length()?;
+    if content_length > TUS_CHUNK_SIZE {
+        return Err(bad_request("Upload chunk exceeds the maximum size"));
+    }
+
+    let token_hash = hash_token(token);
+    let mut client = get_client(pool).await?;
+    let transaction = client.transaction().await.map_err(db_error)?;
+    let row = transaction
+        .query_opt(
+            "SELECT s.upload_link_id, s.target_path, s.upload_length, s.upload_offset
+             FROM upload_sessions s
+             JOIN upload_links l ON l.id = s.upload_link_id
+             WHERE s.id = $1 AND l.token_hash = $2 AND l.used_at IS NULL
+               AND s.expires_at > NOW()
+             FOR UPDATE OF s, l",
+            &[&id, &token_hash],
+        )
+        .await
+        .map_err(db_error)?
+        .ok_or_else(|| not_found("Upload not found"))?;
+    let link_id: Uuid = row.get("upload_link_id");
+    let target_path: String = row.get("target_path");
+    let length = as_u64(row.get::<_, i64>("upload_length"))?;
+    let offset = as_u64(row.get::<_, i64>("upload_offset"))?;
+    if offset == length {
+        return Err(conflict("Upload is already complete"));
+    }
+    if requested_offset != offset {
+        return Err(conflict("Upload offset does not match the server offset"));
+    }
+    let remaining = length.checked_sub(offset).ok_or_else(server_error)?;
+    if content_length > remaining {
+        return Err(bad_request("Upload chunk exceeds the declared file size"));
+    }
+
+    let temporary = temporary_path(id);
+    let metadata = fs::metadata(&temporary).await.map_err(|_| server_error())?;
+    if metadata.len() != offset {
+        eprintln!("Upload session {id} has an inconsistent temporary file offset");
+        return Err(server_error());
+    }
+    let mut file = OpenOptions::new()
+        .write(true)
+        .open(&temporary)
+        .await
+        .map_err(|_| server_error())?;
+    file.seek(SeekFrom::Start(offset))
+        .await
+        .map_err(|_| server_error())?;
+    let written = *data
+        .open(content_length.bytes())
+        .stream_to(&mut file)
+        .await
+        .map_err(|_| server_error())?;
+    if written != content_length {
+        return Err(server_error());
+    }
+    file.flush().await.map_err(|_| server_error())?;
+    file.sync_data().await.map_err(|_| server_error())?;
+
+    let next_offset = offset.checked_add(written).ok_or_else(server_error)?;
+    transaction
+        .execute(
+            "UPDATE upload_sessions
+             SET upload_offset = $1
+             WHERE id = $2 AND upload_link_id = $3",
+            &[&as_i64(next_offset)?, &id, &link_id],
+        )
+        .await
+        .map_err(db_error)?;
+    transaction.commit().await.map_err(db_error)?;
+
+    if next_offset == length {
+        finalize_public_upload(pool, id, link_id, &target_path).await?;
+    }
+    Ok(TusResponse::patched(next_offset))
+}
+
+async fn finalize_public_upload(
+    pool: &Pool,
+    id: Uuid,
+    link_id: Uuid,
+    target_path: &str,
+) -> Result<(), ApiError> {
+    let temporary = temporary_path(id);
+    let destination = Path::new(STORAGE_ROOT).join(target_path);
+    match fs::hard_link(&temporary, &destination).await {
+        Ok(()) => {
+            let mut client = get_client(pool).await?;
+            let transaction = client.transaction().await.map_err(db_error)?;
+            let marked = transaction
+                .execute(
+                    "UPDATE upload_links SET used_at = NOW()
+                     WHERE id = $1 AND used_at IS NULL",
+                    &[&link_id],
+                )
+                .await
+                .map_err(db_error)?;
+            if marked != 1 {
+                return Err(conflict("Upload link is no longer available"));
+            }
+            transaction
+                .execute(
+                    "DELETE FROM upload_sessions WHERE id = $1 AND upload_link_id = $2",
+                    &[&id, &link_id],
+                )
+                .await
+                .map_err(db_error)?;
+            transaction.commit().await.map_err(db_error)?;
+            fs::remove_file(&temporary)
+                .await
+                .map_err(|_| server_error())?;
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            fs::remove_file(&temporary).await.ok();
+            let client = get_client(pool).await?;
+            client
+                .execute(
+                    "DELETE FROM upload_sessions WHERE id = $1 AND upload_link_id = $2",
+                    &[&id, &link_id],
+                )
+                .await
+                .map_err(db_error)?;
+            Err(conflict("A file with this name already exists"))
+        }
+        Err(_) => Err(server_error()),
+    }
+}
+
+#[delete("/public/upload-links/<token>/uploads/<id>")]
+pub(crate) async fn terminate_public_tus_upload(
+    pool: &State<Pool>,
+    token: &str,
+    _headers: TusHeaders,
+    id: &str,
+) -> Result<TusResponse, ApiError> {
+    let id = parse_upload_id(id)?;
+    let token_hash = hash_token(token);
+    let client = get_client(pool).await?;
+    let row = client
+        .query_opt(
+            "DELETE FROM upload_sessions s
+             USING upload_links l
+             WHERE s.id = $1 AND s.upload_link_id = l.id
+               AND l.token_hash = $2 AND l.used_at IS NULL
+             RETURNING s.id",
+            &[&id, &token_hash],
         )
         .await
         .map_err(db_error)?

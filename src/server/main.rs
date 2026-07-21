@@ -9,8 +9,8 @@ mod guards;
 mod list;
 mod models;
 mod shared;
-mod upload_links;
 mod tus;
+mod upload_links;
 
 pub mod test;
 
@@ -27,13 +27,13 @@ use crate::files::{delete_path, download};
 use crate::frontend::frontend_fallback;
 use crate::list::{list_directory, list_root};
 use crate::shared::api_error;
+use crate::tus::{
+    create_public_tus_upload, create_tus_upload, head_public_tus_upload, head_tus_upload,
+    list_tus_uploads, patch_public_tus_upload, patch_tus_upload, public_tus_options,
+    terminate_public_tus_upload, terminate_tus_upload, tus_options,
+};
 use crate::upload_links::{
     create_upload_link, delete_upload_link, get_public_upload_link, list_upload_links,
-    upload_with_link,
-};
-use crate::tus::{
-    create_tus_upload, head_tus_upload, list_tus_uploads, patch_tus_upload, terminate_tus_upload,
-    tus_options,
 };
 
 fn prepare_dirs() {
@@ -50,6 +50,7 @@ fn rocket() -> _ {
 
     rocket::build()
         .manage(pool)
+        .attach(DatabaseFeatures)
         .attach(AdminBootstrap)
         .mount(
             "/api",
@@ -81,16 +82,49 @@ fn rocket() -> _ {
                 head_tus_upload,
                 patch_tus_upload,
                 terminate_tus_upload,
+                public_tus_options,
+                create_public_tus_upload,
+                head_public_tus_upload,
+                patch_public_tus_upload,
+                terminate_public_tus_upload,
                 create_upload_link,
                 list_upload_links,
                 delete_upload_link,
                 get_public_upload_link,
-                upload_with_link,
             ],
         )
         .register("/api", catchers![api_error])
         .mount("/", FileServer::from(shared::BUILD_ROOT))
         .mount("/", routes![frontend_fallback])
+}
+
+// Fairing to apply the idempotent database feature scripts before bootstrapping users.
+
+struct DatabaseFeatures;
+
+#[rocket::async_trait]
+impl Fairing for DatabaseFeatures {
+    fn info(&self) -> Info {
+        Info {
+            name: "Database Features",
+            kind: Kind::Ignite,
+        }
+    }
+
+    async fn on_ignite(&self, rocket: Rocket<Build>) -> Result<Rocket<Build>, Rocket<Build>> {
+        let pool = match rocket.state::<deadpool_postgres::Pool>() {
+            Some(pool) => pool.clone(),
+            None => {
+                eprintln!("Database features: DB pool not available");
+                return Err(rocket);
+            }
+        };
+        if let Err(error) = db::apply_feature_scripts(&pool).await {
+            eprintln!("Database features: {error}");
+            return Err(rocket);
+        }
+        Ok(rocket)
+    }
 }
 
 // Fairing to bootstrap admin user on startup

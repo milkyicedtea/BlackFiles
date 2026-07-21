@@ -163,10 +163,20 @@ pub struct CreatedUploadLink {
     pub token: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct PublicTusUpload {
+    pub id: Uuid,
+    pub target_path: String,
+    pub upload_length: i64,
+    pub upload_offset: i64,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(crate = "rocket::serde")]
 pub struct PublicUploadLinkStatus {
     pub ready: bool,
+    pub session: Option<PublicTusUpload>,
 }
 
 // Pagination

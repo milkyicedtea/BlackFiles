@@ -13,7 +13,7 @@ import { IconDownload, IconTrash, IconUpload } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
 import type { DataTableColumn } from 'mantine-datatable'
 import { DataTable } from 'mantine-datatable'
-import {ChangeEvent, useRef} from 'react'
+import { type ChangeEvent, useRef } from 'react'
 
 interface BrowseSearch {
   path?: string

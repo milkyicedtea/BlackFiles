@@ -7,9 +7,9 @@
     "dev": "bunx vite",
     "build": "bunx --bun vite build",
     "everything": "bun run fmt && bun run lint && bun run typecheck",
-    "fmt": "biome format --write && cargo fmt",
-    "fmt:old": "eslint --fix && cargo fmt",
+    "fmt": "biome check --write && cargo fmt",
     "lint": "biome check --write && cargo clippy",
+    "fmt:old": "eslint --fix && cargo fmt",
     "lint:old": "eslint . && cargo check",
     "typecheck": "bunx --bun @typescript/native-preview --noEmit"
   },

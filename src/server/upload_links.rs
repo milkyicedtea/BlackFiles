@@ -1,22 +1,20 @@
 use crate::guards::{AuthenticatedUser, check_permission};
 use crate::models::{
-    CreateUploadLinkRequest, CreatedUploadLink, PublicUploadLinkStatus, UploadLink,
+    CreateUploadLinkRequest, CreatedUploadLink, PublicTusUpload, PublicUploadLinkStatus, UploadLink,
 };
 use crate::shared::{
     bad_request, conflict, db_error, forbidden, get_client, not_found, path_to_web_string,
-    sanitize_path, server_error,
+    sanitize_path,
 };
+use crate::tus::cleanup_expired_uploads;
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Pool;
 use rand::random;
 use rocket::State;
-use rocket::data::{Data, ToByteUnit};
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
-use tokio::fs;
-use tokio::io::AsyncWriteExt;
+use std::path::PathBuf;
 use uuid::Uuid;
 
 struct ActorRole {
@@ -33,7 +31,7 @@ fn generate_upload_token() -> String {
     hex::encode(random::<[u8; 32]>())
 }
 
-fn hash_token(token: &str) -> String {
+pub(crate) fn hash_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     hex::encode(hasher.finalize())
@@ -48,24 +46,6 @@ fn normalize_target_path(target_path: &str) -> Result<String, (Status, Json<serd
     };
 
     Ok(path_to_web_string(&safe_path))
-}
-
-fn sanitize_filename(filename: &str) -> Result<String, (Status, Json<serde_json::Value>)> {
-    if filename.is_empty() || filename.contains('/') || filename.contains('\\') {
-        return Err(bad_request("Invalid file name"));
-    }
-
-    let safe_path =
-        sanitize_path(PathBuf::from(filename)).ok_or(bad_request("Invalid file name"))?;
-    if safe_path.components().count() != 1 {
-        return Err(bad_request("Invalid file name"));
-    }
-
-    safe_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(str::to_owned)
-        .ok_or_else(|| bad_request("Invalid file name"))
 }
 
 async fn actor_role(
@@ -218,8 +198,10 @@ pub async fn delete_upload_link(
     user: AuthenticatedUser,
     id: String,
 ) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
+    cleanup_expired_uploads(pool).await;
+
     let id = Uuid::parse_str(&id).map_err(|_| bad_request("Invalid upload link ID"))?;
-    let client = get_client(pool).await?;
+    let mut client = get_client(pool).await?;
     let row = client
         .query_opt(
             "SELECT l.created_by_user_id, r.position AS creator_role_position
@@ -247,97 +229,71 @@ pub async fn delete_upload_link(
         }
     }
 
-    client
+    let transaction = client.transaction().await.map_err(db_error)?;
+    let locked = transaction
+        .query_opt(
+            "SELECT id FROM upload_links WHERE id = $1 FOR UPDATE",
+            &[&id],
+        )
+        .await
+        .map_err(db_error)?
+        .is_some();
+    if !locked {
+        return Err(not_found("Upload link not found"));
+    }
+    if transaction
+        .query_opt(
+            "SELECT 1 FROM upload_sessions WHERE upload_link_id = $1",
+            &[&id],
+        )
+        .await
+        .map_err(db_error)?
+        .is_some()
+    {
+        return Err(conflict(
+            "Cannot delete an upload link while its upload is in progress",
+        ));
+    }
+    transaction
         .execute("DELETE FROM upload_links WHERE id = $1", &[&id])
         .await
         .map_err(db_error)?;
+    transaction.commit().await.map_err(db_error)?;
 
     Ok(Json(serde_json::json!({"success": true})))
 }
 
-/// GET /api/public/upload-links/<token> — Validate a one-time upload link.
+/// GET /api/public/upload-links/<token> — Validate a one-time upload link and resume state.
 #[get("/public/upload-links/<token>")]
 pub async fn get_public_upload_link(
     pool: &State<Pool>,
     token: &str,
 ) -> Result<Json<PublicUploadLinkStatus>, (Status, Json<serde_json::Value>)> {
+    cleanup_expired_uploads(pool).await;
+
     let token_hash = hash_token(token);
     let client = get_client(pool).await?;
-    let exists = client
-        .query_opt(
-            "SELECT 1 FROM upload_links WHERE token_hash = $1 AND used_at IS NULL",
-            &[&token_hash],
-        )
-        .await
-        .map_err(db_error)?
-        .is_some();
-
-    if !exists {
-        return Err(not_found("Upload link is invalid or has already been used"));
-    }
-
-    Ok(Json(PublicUploadLinkStatus { ready: true }))
-}
-
-/// PUT /api/public/upload-links/<token>?filename=<name> — Consume link and upload one file.
-#[put("/public/upload-links/<token>?<filename>", data = "<data>")]
-pub async fn upload_with_link(
-    pool: &State<Pool>,
-    token: &str,
-    filename: String,
-    data: Data<'_>,
-) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
-    let filename = sanitize_filename(&filename)?;
-    let token_hash = hash_token(token);
-    let client = get_client(pool).await?;
-
-    // Consume before writing. Concurrent requests can never both use this link.
     let row = client
         .query_opt(
-            "UPDATE upload_links
-             SET used_at = NOW()
-             WHERE token_hash = $1 AND used_at IS NULL
-             RETURNING target_path",
+            "SELECT s.id, s.target_path, s.upload_length, s.upload_offset
+             FROM upload_links l
+             LEFT JOIN upload_sessions s
+               ON s.upload_link_id = l.id AND s.expires_at > NOW()
+             WHERE l.token_hash = $1 AND l.used_at IS NULL",
             &[&token_hash],
         )
         .await
         .map_err(db_error)?
         .ok_or_else(|| not_found("Upload link is invalid or has already been used"))?;
-    let target_path: String = row.get("target_path");
-    let full_path = Path::new(crate::shared::STORAGE_ROOT)
-        .join(target_path)
-        .join(filename);
+    let session = row.get::<_, Option<Uuid>>("id").map(|id| PublicTusUpload {
+        id,
+        target_path: row.get("target_path"),
+        upload_length: row.get("upload_length"),
+        upload_offset: row.get("upload_offset"),
+    });
 
-    if let Some(parent) = full_path.parent() {
-        fs::create_dir_all(parent)
-            .await
-            .map_err(|_| server_error())?;
-    }
-
-    let mut file = match fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&full_path)
-        .await
-    {
-        Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            return Err(conflict("A file with this name already exists"));
-        }
-        Err(_) => return Err(server_error()),
-    };
-
-    if data
-        .open(10.gibibytes())
-        .stream_to(&mut file)
-        .await
-        .is_err()
-        || file.flush().await.is_err()
-    {
-        drop(file);
-        fs::remove_file(&full_path).await.ok();
-        return Err(server_error());
-    }
-
-    Ok(Json(serde_json::json!({"success": true})))
+    Ok(Json(PublicUploadLinkStatus {
+        ready: true,
+        session,
+    }))
 }

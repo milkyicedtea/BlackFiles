@@ -1,6 +1,7 @@
+-- Authenticated resumable uploads feature.
 BEGIN;
 
-CREATE TABLE upload_sessions (
+CREATE TABLE IF NOT EXISTS upload_sessions (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     target_path TEXT NOT NULL UNIQUE,
@@ -10,6 +11,6 @@ CREATE TABLE upload_sessions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_upload_sessions_expires_at ON upload_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_upload_sessions_expires_at ON upload_sessions(expires_at);
 
 COMMIT;

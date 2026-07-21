@@ -214,4 +214,3 @@ pub fn filter_by_search_term(pagination: &PaginationParams, entries: &mut Vec<Fi
         entries.retain(|e| e.name.to_lowercase().contains(&lower));
     }
 }
-

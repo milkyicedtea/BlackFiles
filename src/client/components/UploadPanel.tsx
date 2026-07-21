@@ -114,7 +114,11 @@ export function UploadPanel() {
                     </Tooltip>
                   )}
                   <Tooltip label="Select the original file to resume">
-                    <ActionIcon variant="subtle" size="sm" onClick={() => selectFileToResume(item.id)}>
+                    <ActionIcon
+                      variant="subtle"
+                      size="sm"
+                      onClick={() => selectFileToResume(item.id)}
+                    >
                       <IconPlayerPlay size={14} />
                     </ActionIcon>
                   </Tooltip>

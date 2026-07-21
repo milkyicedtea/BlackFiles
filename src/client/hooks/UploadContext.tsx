@@ -1,7 +1,7 @@
 import { queryKeys } from '@local/hooks/queryKeys'
+import { useQueryClient } from '@tanstack/react-query'
 import Uppy from '@uppy/core'
 import Tus from '@uppy/tus'
-import { useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 
@@ -94,21 +94,20 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<Array<UploadItem>>([])
   const queryClient = useQueryClient()
   const uploadFileIds = useRef<Map<string, string>>(new Map())
-  const [uppy] = useState(
-    () =>
-      new Uppy({ autoProceed: true }).use(Tus, {
-        endpoint: '/api/uploads',
-        withCredentials: true,
-        chunkSize: TUS_CHUNK_SIZE,
-        limit: 3,
-        retryDelays: [0, 1000, 3000, 5000],
-        onShouldRetry: (error, _retryAttempt, _options, defaultOnShouldRetry) => {
-          const status = error.originalResponse?.getStatus()
-          if (status !== undefined && status >= 400 && status < 500) return false
-          return defaultOnShouldRetry(error)
-        },
-        removeFingerprintOnSuccess: true,
-      })
+  const [uppy] = useState(() =>
+    new Uppy({ autoProceed: true }).use(Tus, {
+      endpoint: '/api/uploads',
+      withCredentials: true,
+      chunkSize: TUS_CHUNK_SIZE,
+      limit: 3,
+      retryDelays: [0, 1000, 3000, 5000],
+      onShouldRetry: (error, _retryAttempt, _options, defaultOnShouldRetry) => {
+        const status = error.originalResponse?.getStatus()
+        if (status !== undefined && status >= 400 && status < 500) return false
+        return defaultOnShouldRetry(error)
+      },
+      removeFingerprintOnSuccess: true,
+    })
   )
 
   const updateItem = useCallback((id: string, patch: Partial<UploadItem>) => {
@@ -126,7 +125,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
 
         const pending = body.filter(isPendingTusUpload)
         setItems((prev) => {
-          const knownUrls = new Set(prev.flatMap((item) => (item.uploadUrl ? [item.uploadUrl] : [])))
+          const knownUrls = new Set(
+            prev.flatMap((item) => (item.uploadUrl ? [item.uploadUrl] : []))
+          )
           const restored = pending
             .map((session) => {
               const uploadUrl = `/api/uploads/${session.id}`
@@ -181,10 +182,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       queryClient.invalidateQueries({ queryKey: queryKeys.directory.all })
     }
 
-    const handleError = (
-      file: UppyUploadFile | undefined,
-      error: { message?: string }
-    ) => {
+    const handleError = (file: UppyUploadFile | undefined, error: { message?: string }) => {
       const id = getClientUploadId(file)
       if (!id) return
       setItems((prev) =>
@@ -290,7 +288,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const resumeItem = useCallback(
     (id: string, file: File) => {
       const item = items.find((entry) => entry.id === id)
-      if (!item || item.status !== 'resumable' || !item.uploadUrl) return
+      if (item?.status !== 'resumable' || !item.uploadUrl) return
       if (file.name !== item.name || file.size !== item.size) {
         updateItem(id, { error: 'Select the original file to resume this upload' })
         return

@@ -7,9 +7,9 @@ The production image builds the Vite client and serves it from the same Rocket p
 ## Features
 
 - Browse, search, sort, paginate, preview, and download files from the configured storage root
-- Resumable authenticated uploads using the [tus](https://tus.io/) protocol
+- Resumable authenticated and public-link uploads using the [tus](https://tus.io/) protocol
 - File and directory deletion, controlled by role permissions
-- One-time, public upload links scoped to a destination directory
+- One-time public upload links scoped to a destination directory; interrupted transfers can resume for 24 hours
 - Cookie-based JWT authentication with refresh sessions
 - Role-based access control for file, user, role, and upload-link operations
 - User and role administration from the web UI
@@ -69,7 +69,7 @@ Before deployment:
 3. Ensure the host directory mounted at `./storage` is writable by the container.
 4. Terminate TLS at a reverse proxy; the application cookies are `HttpOnly` and `SameSite=Lax`, but HTTPS is still required for an Internet-facing deployment.
 
-The SQL scripts in `dbinit/` initialize a new PostgreSQL data volume. For an existing installation, apply the appropriate files in `migrations/` before deploying a version that requires them.
+Every idempotent feature script in `dbinit/` is embedded in the server and applied at startup. The same directory is mounted into PostgreSQL for fresh-volume initialization, so new and existing installations follow the identical schema path; do not apply scripts manually.
 
 ## Local development
 
@@ -110,11 +110,11 @@ All API routes are prefixed with `/api`.
 | --- | --- |
 | Authentication | `POST /auth/login`, `POST /auth/logout`, `POST /auth/refresh`, `GET /auth/me` |
 | File browsing | `GET /list`, `GET /list/<path..>`, `GET /files/<path..>` |
-| File management | `DELETE /files/<path..>`, tus uploads at `/uploads` |
-| Upload links | `POST /upload-links`, `GET /upload-links`, `DELETE /upload-links/<id>`, public upload routes under `/public/upload-links/<token>` |
+| File management | `DELETE /files/<path..>`, authenticated tus uploads at `/uploads` |
+| Upload links | `POST /upload-links`, `GET /upload-links`, `DELETE /upload-links/<id>`, and public tus uploads under `/public/upload-links/<token>/uploads` |
 | Administration | User, role, and permission endpoints under `/users`, `/roles`, and `/permissions` |
 
-Authenticated operations require the relevant role permission. Public upload-link endpoints are the exception: a valid one-time token authorizes a single upload to its preconfigured destination.
+Authenticated operations require the relevant role permission. Public upload-link endpoints are the exception: a valid token authorizes one resumable file transfer to its preconfigured destination. The link is consumed only after that transfer completes successfully.
 
 ## Security model
 

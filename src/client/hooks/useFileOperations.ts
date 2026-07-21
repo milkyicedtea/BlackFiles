@@ -3,7 +3,6 @@ import { queryKeys } from '@local/hooks/queryKeys'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 
-
 export function useFileOperations() {
   const queryClient = useQueryClient()
 

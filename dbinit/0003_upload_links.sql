@@ -1,6 +1,7 @@
+-- One-time public upload links feature.
 BEGIN;
 
-CREATE TABLE upload_links (
+CREATE TABLE IF NOT EXISTS upload_links (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     token_hash CHAR(64) NOT NULL UNIQUE,
     target_path TEXT NOT NULL,
@@ -9,7 +10,7 @@ CREATE TABLE upload_links (
     used_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_upload_links_created_by_user_id
+CREATE INDEX IF NOT EXISTS idx_upload_links_created_by_user_id
     ON upload_links(created_by_user_id);
 
 INSERT INTO permissions (name, display_name, group_name) VALUES
