@@ -19,7 +19,7 @@ import type { CheckResponse } from '@local/types/api'
 import { useDisclosure } from '@mantine/hooks'
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
-const PUBLIC_ROUTES = ['/login']
+const PUBLIC_ROUTES = ['/login', '/upload/']
 
 async function loadAuth(allowRefresh: boolean): Promise<AuthState> {
   try {

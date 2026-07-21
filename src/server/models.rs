@@ -136,6 +136,39 @@ pub struct Permission {
     pub group_name: String,
 }
 
+// One-time upload links
+
+#[derive(Debug, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct CreateUploadLinkRequest {
+    pub target_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct UploadLink {
+    pub id: Uuid,
+    pub target_path: String,
+    pub created_by_user_id: Uuid,
+    pub created_by_username: String,
+    pub created_at: DateTime<Utc>,
+    pub used_at: Option<DateTime<Utc>>,
+    pub can_delete: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct CreatedUploadLink {
+    pub link: UploadLink,
+    pub token: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct PublicUploadLinkStatus {
+    pub ready: bool,
+}
+
 // Pagination
 
 #[derive(Debug, Deserialize, rocket::form::FromForm)]

@@ -1,5 +1,5 @@
 import { api } from '@local/hooks/api'
-import { isAdmin, useAuth } from '@local/hooks/authContext'
+import { isAdmin, useAuth, usePermission } from '@local/hooks/authContext'
 import {
   ActionIcon,
   Button,
@@ -13,6 +13,7 @@ import {
 } from '@mantine/core'
 import {
   IconFolder,
+  IconLink,
   IconMoon,
   IconSettings,
   IconShieldLock,
@@ -32,6 +33,9 @@ export function SideNav() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const admin = isAdmin(user)
+  const canCreateUploadLinks = usePermission('create_upload_links')
+  const canViewUploadLinks = usePermission('view_upload_links')
+  const canManageUploadLinks = admin || canCreateUploadLinks || canViewUploadLinks
 
   function toggleColorScheme() {
     setColorScheme(colorScheme === 'dark' ? 'light' : 'dark')
@@ -61,6 +65,18 @@ export function SideNav() {
             styles={compact}
             fz="xs"
           />
+
+          {canManageUploadLinks && (
+            <NavLink
+              component={Link}
+              preload="intent"
+              to="/upload-links"
+              label="Upload links"
+              leftSection={<IconLink size={16} />}
+              styles={compact}
+              fz="xs"
+            />
+          )}
 
           {admin && (
             <NavLink

@@ -17,7 +17,12 @@ INSERT INTO permissions (name, display_name, group_name) VALUES
 
 -- Roles
 ('view_roles',     'View roles',   'roles'),
-('manage_roles',   'Manage roles', 'roles')
+('manage_roles',   'Manage roles', 'roles'),
+
+-- Upload links
+('create_upload_links', 'Create one-time upload links', 'upload_links'),
+('view_upload_links',   'View one-time upload links',   'upload_links'),
+('delete_upload_links', 'Delete one-time upload links', 'upload_links')
 ON CONFLICT (name) DO NOTHING;
 
 -- ══════════════════ ROLES ══════════════════

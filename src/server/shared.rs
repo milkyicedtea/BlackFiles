@@ -8,7 +8,6 @@ use rocket::serde::{Serialize, json::Json};
 use rocket::{Request, Response};
 use std::path::Path;
 use std::path::PathBuf;
-use tokio::fs;
 use tokio::io::AsyncRead;
 
 pub const STORAGE_ROOT: &str = "storage";
@@ -216,19 +215,3 @@ pub fn filter_by_search_term(pagination: &PaginationParams, entries: &mut Vec<Fi
     }
 }
 
-pub async fn ensure_file_does_not_exist(
-    path: &Path,
-) -> Result<(), (Status, Json<serde_json::Value>)> {
-    match fs::metadata(path).await {
-        Ok(_) => {
-            let filename = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("file");
-
-            Err(conflict(&format!("File '{}' already exists", filename)))
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(_) => Err(server_error()),
-    }
-}

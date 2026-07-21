@@ -13,7 +13,7 @@ import { IconDownload, IconTrash, IconUpload } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
 import type { DataTableColumn } from 'mantine-datatable'
 import { DataTable } from 'mantine-datatable'
-import { useRef } from 'react'
+import {ChangeEvent, useRef} from 'react'
 
 interface BrowseSearch {
   path?: string
@@ -93,7 +93,7 @@ function BrowsePage() {
     setLimit,
   } = useDirectory()
 
-  const { deleteFile } = useFileOperations(currentPath)
+  const { deleteFile } = useFileOperations()
   const { addFiles } = useUploader()
 
   function goUp() {
@@ -102,7 +102,7 @@ function BrowsePage() {
     navigateToDir(parent)
   }
 
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFileSelect(e: ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
     if (!files || files.length === 0) return
     addFiles(files, currentPath)
@@ -242,6 +242,7 @@ function BrowsePage() {
         </Group>
 
         <DataTable<FileEntry>
+          idAccessor="path"
           withTableBorder
           withColumnBorders
           borderRadius="sm"

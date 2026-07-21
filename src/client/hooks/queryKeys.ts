@@ -22,6 +22,9 @@ export const queryKeys = {
   permissions: {
     all: ['permissions'] as const,
   },
+  uploadLinks: {
+    all: ['upload-links'] as const,
+  },
   directory: {
     all: ['directory'] as const,
     list: (params: { path: string; limit?: number; offset?: number; search?: string }) =>

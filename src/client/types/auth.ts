@@ -36,6 +36,21 @@ export interface Permission {
   group_name: string
 }
 
+export interface UploadLink {
+  id: string
+  target_path: string
+  created_by_user_id: string
+  created_by_username: string
+  created_at: string
+  used_at: string | null
+  can_delete: boolean
+}
+
+export interface CreatedUploadLink {
+  link: UploadLink
+  token: string
+}
+
 export interface FileEntry {
   name: string
   is_dir: boolean

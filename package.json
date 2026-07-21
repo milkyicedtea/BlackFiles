@@ -24,6 +24,8 @@
     "@tanstack/react-query-devtools": "^5.101.2",
     "@tanstack/react-router": "^1.170.16",
     "@tanstack/router-plugin": "^1.168.18",
+    "@uppy/core": "^5.2.0",
+    "@uppy/tus": "^5.1.1",
     "axios": "^1.18.1",
     "mantine-datatable": "^8.3.13",
     "react": "^19.2.7",

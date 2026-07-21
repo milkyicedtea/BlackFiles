@@ -9,13 +9,20 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UploadLinksRouteImport } from './routes/upload-links'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as BrowseRouteImport } from './routes/browse'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as UploadTokenRouteImport } from './routes/upload.$token'
 import { Route as SettingsUsersRouteImport } from './routes/settings/users'
 import { Route as SettingsRolesRouteImport } from './routes/settings/roles'
 
+const UploadLinksRoute = UploadLinksRouteImport.update({
+  id: '/upload-links',
+  path: '/upload-links',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -36,6 +43,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/settings/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UploadTokenRoute = UploadTokenRouteImport.update({
+  id: '/upload/$token',
+  path: '/upload/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsUsersRoute = SettingsUsersRouteImport.update({
   id: '/settings/users',
   path: '/settings/users',
@@ -51,16 +63,20 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
   '/login': typeof LoginRoute
+  '/upload-links': typeof UploadLinksRoute
   '/settings/roles': typeof SettingsRolesRoute
   '/settings/users': typeof SettingsUsersRoute
+  '/upload/$token': typeof UploadTokenRoute
   '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
   '/login': typeof LoginRoute
+  '/upload-links': typeof UploadLinksRoute
   '/settings/roles': typeof SettingsRolesRoute
   '/settings/users': typeof SettingsUsersRoute
+  '/upload/$token': typeof UploadTokenRoute
   '/settings': typeof SettingsIndexRoute
 }
 export interface FileRoutesById {
@@ -68,8 +84,10 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
   '/login': typeof LoginRoute
+  '/upload-links': typeof UploadLinksRoute
   '/settings/roles': typeof SettingsRolesRoute
   '/settings/users': typeof SettingsUsersRoute
+  '/upload/$token': typeof UploadTokenRoute
   '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRouteTypes {
@@ -78,24 +96,30 @@ export interface FileRouteTypes {
     | '/'
     | '/browse'
     | '/login'
+    | '/upload-links'
     | '/settings/roles'
     | '/settings/users'
+    | '/upload/$token'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/browse'
     | '/login'
+    | '/upload-links'
     | '/settings/roles'
     | '/settings/users'
+    | '/upload/$token'
     | '/settings'
   id:
     | '__root__'
     | '/'
     | '/browse'
     | '/login'
+    | '/upload-links'
     | '/settings/roles'
     | '/settings/users'
+    | '/upload/$token'
     | '/settings/'
   fileRoutesById: FileRoutesById
 }
@@ -103,13 +127,22 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BrowseRoute: typeof BrowseRoute
   LoginRoute: typeof LoginRoute
+  UploadLinksRoute: typeof UploadLinksRoute
   SettingsRolesRoute: typeof SettingsRolesRoute
   SettingsUsersRoute: typeof SettingsUsersRoute
+  UploadTokenRoute: typeof UploadTokenRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/upload-links': {
+      id: '/upload-links'
+      path: '/upload-links'
+      fullPath: '/upload-links'
+      preLoaderRoute: typeof UploadLinksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -138,6 +171,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/upload/$token': {
+      id: '/upload/$token'
+      path: '/upload/$token'
+      fullPath: '/upload/$token'
+      preLoaderRoute: typeof UploadTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/users': {
       id: '/settings/users'
       path: '/settings/users'
@@ -159,8 +199,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BrowseRoute: BrowseRoute,
   LoginRoute: LoginRoute,
+  UploadLinksRoute: UploadLinksRoute,
   SettingsRolesRoute: SettingsRolesRoute,
   SettingsUsersRoute: SettingsUsersRoute,
+  UploadTokenRoute: UploadTokenRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }
 export const routeTree = rootRouteImport

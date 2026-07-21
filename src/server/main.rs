@@ -9,6 +9,9 @@ mod guards;
 mod list;
 mod models;
 mod shared;
+mod upload_links;
+mod tus;
+
 pub mod test;
 
 use rocket::fairing::{Fairing, Info, Kind};
@@ -20,10 +23,18 @@ use crate::auth::{
     list_permissions, list_roles, list_users, login, logout, me, move_role, refresh, update_role,
     update_user_password, update_user_role,
 };
-use crate::files::{delete_path, download, upload, upload_progress, upload_ws};
+use crate::files::{delete_path, download};
 use crate::frontend::frontend_fallback;
 use crate::list::{list_directory, list_root};
 use crate::shared::api_error;
+use crate::upload_links::{
+    create_upload_link, delete_upload_link, get_public_upload_link, list_upload_links,
+    upload_with_link,
+};
+use crate::tus::{
+    create_tus_upload, head_tus_upload, list_tus_uploads, patch_tus_upload, terminate_tus_upload,
+    tus_options,
+};
 
 fn prepare_dirs() {
     std::fs::create_dir_all(shared::STORAGE_ROOT).ok();
@@ -63,10 +74,18 @@ fn rocket() -> _ {
                 list_root,
                 list_directory,
                 download,
-                upload,
                 delete_path,
-                upload_progress,
-                upload_ws,
+                tus_options,
+                list_tus_uploads,
+                create_tus_upload,
+                head_tus_upload,
+                patch_tus_upload,
+                terminate_tus_upload,
+                create_upload_link,
+                list_upload_links,
+                delete_upload_link,
+                get_public_upload_link,
+                upload_with_link,
             ],
         )
         .register("/api", catchers![api_error])

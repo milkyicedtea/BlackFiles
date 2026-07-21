@@ -14,14 +14,29 @@ import {
 import {
   IconAlertCircle,
   IconCircleCheck,
+  IconPlayerPlay,
   IconPlayerStop,
   IconUpload,
   IconX,
 } from '@tabler/icons-react'
+import { useRef, useState } from 'react'
 
 export function UploadPanel() {
-  const { items, hasActive, hasAny, activeCount, cancel, clearCompleted } = useUploader()
+  const { items, hasActive, hasAny, activeCount, cancel, remove, resume, clearCompleted } =
+    useUploader()
   const canUpload = usePermission('upload_files')
+  const resumeInputRef = useRef<HTMLInputElement>(null)
+  const [resumingId, setResumingId] = useState<string | null>(null)
+
+  function selectFileToResume(id: string) {
+    setResumingId(id)
+    resumeInputRef.current?.click()
+  }
+
+  function resumeSelectedFile(file: File | null) {
+    if (file && resumingId) resume(resumingId, file)
+    setResumingId(null)
+  }
 
   if (!canUpload) return null
 
@@ -43,6 +58,15 @@ export function UploadPanel() {
       </Popover.Target>
 
       <Popover.Dropdown p="sm">
+        <input
+          ref={resumeInputRef}
+          type="file"
+          hidden
+          onChange={(event) => {
+            resumeSelectedFile(event.currentTarget.files?.[0] ?? null)
+            event.currentTarget.value = ''
+          }}
+        />
         <Stack gap={4}>
           {items.length === 0 && (
             <Text size="xs" c="dimmed" ta="center" py="sm">
@@ -79,6 +103,27 @@ export function UploadPanel() {
                 </Text>
               )}
 
+              {item.status === 'resumable' && (
+                <>
+                  <Text size="xs" c="dimmed">
+                    Ready to resume
+                  </Text>
+                  {item.error && (
+                    <Tooltip label={item.error}>
+                      <IconAlertCircle size={16} color="var(--mantine-color-red-6)" />
+                    </Tooltip>
+                  )}
+                  <Tooltip label="Select the original file to resume">
+                    <ActionIcon variant="subtle" size="sm" onClick={() => selectFileToResume(item.id)}>
+                      <IconPlayerPlay size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <ActionIcon variant="subtle" size="sm" onClick={() => remove(item.id)}>
+                    <IconX size={14} />
+                  </ActionIcon>
+                </>
+              )}
+
               {item.status === 'uploading' && (
                 <>
                   <Progress value={item.progress} size="sm" w={80} color="blue" animated />
@@ -94,7 +139,7 @@ export function UploadPanel() {
               )}
 
               {(item.status === 'error' || item.status === 'cancelled') && (
-                <ActionIcon variant="subtle" size="sm" onClick={() => cancel(item.id)}>
+                <ActionIcon variant="subtle" size="sm" onClick={() => remove(item.id)}>
                   <IconX size={14} />
                 </ActionIcon>
               )}

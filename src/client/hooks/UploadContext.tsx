@@ -1,184 +1,329 @@
 import { queryKeys } from '@local/hooks/queryKeys'
+import Uppy from '@uppy/core'
+import Tus from '@uppy/tus'
 import { useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+
+interface PendingTusUpload {
+  id: string
+  target_path: string
+  upload_length: number
+  upload_offset: number
+}
+
+interface UppyUploadFile {
+  meta: Record<string, unknown>
+  tus?: {
+    uploadUrl?: string | null
+  }
+}
 
 export interface UploadItem {
   id: string
   name: string
   progress: number
-  status: 'uploading' | 'done' | 'error' | 'cancelled'
+  status: 'uploading' | 'resumable' | 'done' | 'error' | 'cancelled'
   error?: string
   size: number
   filePath: string
+  uploadUrl?: string
 }
 
 interface UploadContextValue {
   items: Array<UploadItem>
   addFiles: (files: FileList | Array<File>, targetPath: string) => void
   cancel: (id: string) => void
+  remove: (id: string) => void
+  resume: (id: string, file: File) => void
   clearCompleted: () => void
   hasActive: boolean
   hasAny: boolean
   activeCount: number
 }
 
-// Bytes per binary WebSocket frame. The server's tungstenite default
-// max_message_size is 64 MiB; 8 MiB stays comfortably below it while keeping
-// memory pressure low and ack round-trips cheap.
-const WS_CHUNK_SIZE = 8 * 1024 * 1024
+const TUS_CHUNK_SIZE = 8 * 1024 * 1024
+
+function uploadErrorMessage(error: { message?: string }): string {
+  if (
+    'originalResponse' in error &&
+    error.originalResponse !== null &&
+    typeof error.originalResponse === 'object' &&
+    'getBody' in error.originalResponse &&
+    typeof error.originalResponse.getBody === 'function'
+  ) {
+    const body = error.originalResponse.getBody()
+    if (body) {
+      try {
+        const parsed: unknown = JSON.parse(body)
+        if (
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          'error' in parsed &&
+          typeof parsed.error === 'string'
+        ) {
+          return parsed.error
+        }
+      } catch {
+        // Fall through to Uppy’s message when the server did not send JSON.
+      }
+    }
+  }
+
+  return error.message || 'Upload failed'
+}
 
 const UploadContext = createContext<UploadContextValue | null>(null)
+
+function isPendingTusUpload(value: unknown): value is PendingTusUpload {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'target_path' in value &&
+    typeof value.target_path === 'string' &&
+    'upload_length' in value &&
+    typeof value.upload_length === 'number' &&
+    'upload_offset' in value &&
+    typeof value.upload_offset === 'number'
+  )
+}
 
 export function UploadProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<Array<UploadItem>>([])
   const queryClient = useQueryClient()
-  const socketsRef = useRef<Map<string, WebSocket>>(new Map())
-
-  useEffect(
-    () => () => {
-      for (const s of socketsRef.current.values()) s.close()
-    },
-    []
+  const uploadFileIds = useRef<Map<string, string>>(new Map())
+  const [uppy] = useState(
+    () =>
+      new Uppy({ autoProceed: true }).use(Tus, {
+        endpoint: '/api/uploads',
+        withCredentials: true,
+        chunkSize: TUS_CHUNK_SIZE,
+        limit: 3,
+        retryDelays: [0, 1000, 3000, 5000],
+        onShouldRetry: (error, _retryAttempt, _options, defaultOnShouldRetry) => {
+          const status = error.originalResponse?.getStatus()
+          if (status !== undefined && status >= 400 && status < 500) return false
+          return defaultOnShouldRetry(error)
+        },
+        removeFingerprintOnSuccess: true,
+      })
   )
 
   const updateItem = useCallback((id: string, patch: Partial<UploadItem>) => {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)))
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)))
   }, [])
 
-  const cancelItem = useCallback((id: string) => {
-    // Closing the socket makes the server drop the partial file (see upload_ws).
-    socketsRef.current.get(id)?.close()
-    socketsRef.current.delete(id)
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, status: 'cancelled' as const } : i)))
-  }, [])
+  useEffect(() => {
+    let active = true
 
-  const clearCompleted = useCallback(() => {
-    setItems((prev) => prev.filter((i) => i.status === 'uploading'))
-  }, [])
+    void fetch('/api/uploads', { credentials: 'same-origin' })
+      .then(async (response) => {
+        if (!response.ok) return
+        const body: unknown = await response.json()
+        if (!Array.isArray(body) || !active) return
 
-  const addFilesHandler = useCallback(
-    async (files: FileList | Array<File>, targetPath: string) => {
-      const fileArr = Array.from(files)
-      const newItems: Array<UploadItem> = fileArr.map((f) => ({
-        id: crypto.randomUUID(),
-        name: f.name,
-        progress: 0,
-        status: 'uploading' as const,
-        size: f.size,
-        filePath: targetPath
-          ? `${targetPath}/${encodeURIComponent(f.name)}`
-          : encodeURIComponent(f.name),
-      }))
-
-      setItems((prev) => [...prev, ...newItems])
-
-      for (let fi = 0; fi < newItems.length; fi++) {
-        const entry = newItems[fi]
-        const file = fileArr[fi]
-
-        // WebSocket upload — see src/server/files.rs::upload_ws for the protocol.
-        // Progress is driven by server "ack" messages (bytes persisted on disk),
-        // so the bar cannot race ahead of the writer the way a monolithic PUT's
-        // onUploadProgress did (it counted bytes handed to the network buffer).
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        const wsUrl = `${wsProtocol}//${window.location.host}/api/upload?path=${entry.filePath}`
-        const socket = new WebSocket(wsUrl)
-        socketsRef.current.set(entry.id, socket)
-
-        let offset = 0
-        let resolved = false
-        let ackResolver: ((done: boolean) => void) | null = null
-
-        const awaitAck = () =>
-          new Promise<boolean>((r) => {
-            ackResolver = r
-          })
-
-        await new Promise<void>((resolve) => {
-          const finish = () => {
-            if (resolved) return
-            resolved = true
-            resolve()
-          }
-
-          socket.onopen = async () => {
-            try {
-              socket.send(JSON.stringify({ type: 'init', size: file.size, mime: file.type || '' }))
-              while (offset < file.size && socket.readyState === WebSocket.OPEN) {
-                const end = Math.min(offset + WS_CHUNK_SIZE, file.size)
-                const buf = await file.slice(offset, end).arrayBuffer()
-                socket.send(buf)
-                const done = await awaitAck()
-                if (done) break
-                offset = end
-                updateItem(entry.id, {
-                  progress: file.size > 0 ? Math.round((offset * 100) / file.size) : 100,
-                })
+        const pending = body.filter(isPendingTusUpload)
+        setItems((prev) => {
+          const knownUrls = new Set(prev.flatMap((item) => (item.uploadUrl ? [item.uploadUrl] : [])))
+          const restored = pending
+            .map((session) => {
+              const uploadUrl = `/api/uploads/${session.id}`
+              const name = session.target_path.split('/').at(-1) || session.target_path
+              return {
+                id: session.id,
+                name,
+                progress:
+                  session.upload_length > 0
+                    ? Math.round((session.upload_offset * 100) / session.upload_length)
+                    : 100,
+                status: 'resumable' as const,
+                size: session.upload_length,
+                filePath: session.target_path,
+                uploadUrl,
               }
-              if (socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ type: 'end' }))
-              }
-            } catch {
-              // The onerror/onclose handlers surface the failure; ensure we don't hang.
-              ackResolver?.(true)
-            }
-          }
-
-          socket.onmessage = (ev) => {
-            if (typeof ev.data !== 'string') return
-            let msg: { type: string; bytes?: number; message?: string }
-            try {
-              msg = JSON.parse(ev.data)
-            } catch {
-              return
-            }
-            if (msg.type === 'ack') {
-              ackResolver?.(false)
-              ackResolver = null
-            } else if (msg.type === 'done') {
-              ackResolver?.(true)
-              updateItem(entry.id, { progress: 100, status: 'done' })
-              queryClient.invalidateQueries({ queryKey: queryKeys.directory.all })
-              finish()
-            } else if (msg.type === 'error') {
-              updateItem(entry.id, { status: 'error', error: msg.message ?? 'Upload failed' })
-              ackResolver?.(true)
-              finish()
-            }
-          }
-
-          socket.onerror = () => {
-            updateItem(entry.id, { status: 'error', error: 'Connection error' })
-            ackResolver?.(true)
-            finish()
-          }
-
-          socket.onclose = () => {
-            // Release a pending chunk-ack so the send loop can't hang — some
-            // browsers report an abnormal close via onclose only, no onerror.
-            ackResolver?.(true)
-            if (resolved) return
-            // Unexpected close without a "done": if still uploading, mark errored.
-            // (A user cancel already set 'cancelled' via cancelItem, which we leave alone.)
-            setItems((prev) =>
-              prev.map((i) =>
-                i.id === entry.id && i.status === 'uploading'
-                  ? { ...i, status: 'error', error: 'Connection closed' }
-                  : i
-              )
-            )
-            finish()
-          }
+            })
+            .filter((item) => !knownUrls.has(item.uploadUrl))
+          return [...prev, ...restored]
         })
+      })
+      .catch(() => undefined)
 
-        socketsRef.current.delete(entry.id)
-      }
+    return () => {
+      active = false
+    }
+  }, [])
+  useEffect(() => {
+    const getClientUploadId = (file: UppyUploadFile | undefined) => {
+      const id = file?.meta.clientUploadId
+      return typeof id === 'string' ? id : null
+    }
+
+    const handleProgress = (
+      file: UppyUploadFile | undefined,
+      progress: { bytesUploaded: number; bytesTotal: number | null }
+    ) => {
+      const id = getClientUploadId(file)
+      if (!id) return
+      const total = progress.bytesTotal
+      const uploadUrl = file?.tus?.uploadUrl
+      updateItem(id, {
+        progress: total && total > 0 ? Math.round((progress.bytesUploaded * 100) / total) : 100,
+        ...(uploadUrl ? { uploadUrl } : {}),
+      })
+    }
+
+    const handleSuccess = (file: UppyUploadFile | undefined) => {
+      const id = getClientUploadId(file)
+      if (!id) return
+      updateItem(id, { progress: 100, status: 'done' })
+      queryClient.invalidateQueries({ queryKey: queryKeys.directory.all })
+    }
+
+    const handleError = (
+      file: UppyUploadFile | undefined,
+      error: { message?: string }
+    ) => {
+      const id = getClientUploadId(file)
+      if (!id) return
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === id && item.status === 'uploading'
+            ? { ...item, status: 'error', error: uploadErrorMessage(error) }
+            : item
+        )
+      )
+    }
+
+    uppy.on('upload-progress', handleProgress)
+    uppy.on('upload-success', handleSuccess)
+    uppy.on('upload-error', handleError)
+
+    return () => {
+      uppy.off('upload-progress', handleProgress)
+      uppy.off('upload-success', handleSuccess)
+      uppy.off('upload-error', handleError)
+    }
+  }, [queryClient, updateItem, uppy])
+
+  const cancelItem = useCallback(
+    (id: string) => {
+      const uppyFileId = uploadFileIds.current.get(id)
+      if (uppyFileId && uppy.getFile(uppyFileId)) uppy.removeFile(uppyFileId)
+      setItems((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, status: 'cancelled' as const } : item))
+      )
     },
-    [updateItem, queryClient]
+    [uppy]
   )
 
-  const activeCount = items.filter((i) => i.status === 'uploading').length
+  const removeItem = useCallback(
+    (id: string) => {
+      const item = items.find((entry) => entry.id === id)
+      const uppyFileId = uploadFileIds.current.get(id)
+      if (uppyFileId && uppy.getFile(uppyFileId)) {
+        uppy.removeFile(uppyFileId)
+      } else if (item?.uploadUrl) {
+        void fetch(item.uploadUrl, {
+          method: 'DELETE',
+          credentials: 'same-origin',
+          headers: { 'Tus-Resumable': '1.0.0' },
+        })
+      }
+      uploadFileIds.current.delete(id)
+      setItems((prev) => prev.filter((entry) => entry.id !== id))
+    },
+    [items, uppy]
+  )
+
+  const clearCompleted = useCallback(() => {
+    for (const item of items) {
+      if (item.status === 'uploading' || item.status === 'resumable') continue
+      const uppyFileId = uploadFileIds.current.get(item.id)
+      if (uppyFileId && uppy.getFile(uppyFileId)) uppy.removeFile(uppyFileId)
+      uploadFileIds.current.delete(item.id)
+    }
+    setItems((prev) =>
+      prev.filter((item) => item.status === 'uploading' || item.status === 'resumable')
+    )
+  }, [items, uppy])
+
+  const addFilesHandler = useCallback(
+    (files: FileList | Array<File>, targetPath: string) => {
+      for (const file of Array.from(files)) {
+        const id = crypto.randomUUID()
+        const entry: UploadItem = {
+          id,
+          name: file.name,
+          progress: 0,
+          status: 'uploading',
+          size: file.size,
+          filePath: targetPath ? `${targetPath}/${file.name}` : file.name,
+        }
+
+        setItems((prev) => [...prev, entry])
+        try {
+          const uppyFileId = uppy.addFile({
+            name: file.name,
+            type: file.type,
+            data: file,
+            meta: {
+              clientUploadId: id,
+              filename: file.name,
+              targetPath,
+              relativePath: targetPath ? `${targetPath}/${file.name}` : file.name,
+            },
+          })
+          uploadFileIds.current.set(id, uppyFileId)
+        } catch (error) {
+          updateItem(id, {
+            status: 'error',
+            error: error instanceof Error ? error.message : 'Upload could not be queued',
+          })
+        }
+      }
+    },
+    [updateItem, uppy]
+  )
+
+  const resumeItem = useCallback(
+    (id: string, file: File) => {
+      const item = items.find((entry) => entry.id === id)
+      if (!item || item.status !== 'resumable' || !item.uploadUrl) return
+      if (file.name !== item.name || file.size !== item.size) {
+        updateItem(id, { error: 'Select the original file to resume this upload' })
+        return
+      }
+
+      const separator = item.filePath.lastIndexOf('/')
+      const targetPath = separator === -1 ? '' : item.filePath.slice(0, separator)
+      updateItem(id, { status: 'uploading', error: undefined })
+      try {
+        const uppyFileId = uppy.addFile({
+          name: file.name,
+          type: file.type,
+          data: file,
+          meta: {
+            clientUploadId: id,
+            filename: file.name,
+            targetPath,
+            relativePath: item.filePath,
+          },
+        })
+        uppy.setFileState(uppyFileId, { tus: { uploadUrl: item.uploadUrl } })
+        uploadFileIds.current.set(id, uppyFileId)
+      } catch (error) {
+        updateItem(id, {
+          status: 'resumable',
+          error: error instanceof Error ? error.message : 'Upload could not be resumed',
+        })
+      }
+    },
+    [items, updateItem, uppy]
+  )
+
+  const activeCount = items.filter((item) => item.status === 'uploading').length
 
   return (
     <UploadContext.Provider
@@ -186,6 +331,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         items,
         addFiles: addFilesHandler,
         cancel: cancelItem,
+        remove: removeItem,
+        resume: resumeItem,
         clearCompleted,
         hasActive: activeCount > 0,
         hasAny: items.length > 0,
