@@ -25,6 +25,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 
 # Build application
 COPY Cargo.toml Cargo.lock ./
+COPY dbinit ./dbinit
 COPY src/server ./src/server
 RUN cargo build --release
 
