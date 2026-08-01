@@ -1,4 +1,5 @@
-use crate::guards::{AuthenticatedUser, check_permission};
+use super::tus::cleanup_expired_uploads;
+use crate::auth::guards::{AuthenticatedUser, check_permission};
 use crate::models::{
     CreateUploadLinkRequest, CreatedUploadLink, PublicTusUpload, PublicUploadLinkStatus, UploadLink,
 };
@@ -6,7 +7,6 @@ use crate::shared::{
     bad_request, conflict, db_error, forbidden, get_client, not_found, path_to_web_string,
     sanitize_path,
 };
-use crate::tus::cleanup_expired_uploads;
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Pool;
 use rand::random;

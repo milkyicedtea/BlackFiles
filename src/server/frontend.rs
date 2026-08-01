@@ -1,4 +1,3 @@
-use crate::shared;
 use rocket::fs::NamedFile;
 use std::path::{Path, PathBuf};
 
@@ -9,7 +8,7 @@ pub async fn frontend_fallback(path: PathBuf) -> Option<NamedFile> {
         return None;
     }
 
-    NamedFile::open(Path::new(shared::BUILD_ROOT).join("index.html"))
+    NamedFile::open(Path::new(crate::shared::BUILD_ROOT).join("index.html"))
         .await
         .ok()
 }

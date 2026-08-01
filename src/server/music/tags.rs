@@ -1,17 +1,11 @@
-use deadpool_postgres::Pool;
+use super::*;
+
 use lofty::picture::PictureType;
 use lofty::prelude::*;
 use lofty::probe::Probe;
 use lofty::tag::ItemKey;
-use rocket::State;
-use rocket::http::Status;
-use rocket::serde::{Deserialize, Serialize, json::Json};
 use std::path::Path;
-use tokio::fs;
 use uuid::Uuid;
-
-use crate::guards::{AuthenticatedUser, check_permission};
-use crate::shared::{MUSIC_ROOT, db_error, forbidden, get_client, not_found};
 
 // ── Response types ──
 
@@ -57,47 +51,6 @@ pub struct UpdateTagsRequest {
     pub year: Option<i16>,
     pub track_number: Option<i16>,
     pub disc_number: Option<i16>,
-}
-
-// ── Dynamic query parameter builder ──
-
-struct QueryBuilder {
-    params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>>,
-    counter: u32,
-}
-
-impl QueryBuilder {
-    fn new() -> Self {
-        Self {
-            params: Vec::new(),
-            counter: 0,
-        }
-    }
-
-    fn add(&mut self, value: String) -> String {
-        self.counter += 1;
-        self.params.push(Box::new(value));
-        format!("${}", self.counter)
-    }
-
-    fn add_int(&mut self, value: i64) -> String {
-        self.counter += 1;
-        self.params.push(Box::new(value));
-        format!("${}", self.counter)
-    }
-
-    fn add_uuid(&mut self, value: Uuid) -> String {
-        self.counter += 1;
-        self.params.push(Box::new(value));
-        format!("${}", self.counter)
-    }
-
-    fn as_slice(&self) -> Vec<&(dyn tokio_postgres::types::ToSql + Sync)> {
-        self.params
-            .iter()
-            .map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync))
-            .collect()
-    }
 }
 
 // ── Tag scanner ──
@@ -236,7 +189,7 @@ async fn extract_cover_art(tag: Option<&lofty::tag::Tag>, relative_path: &str) -
 
 // ── Permission helper ──
 
-async fn require_music_permission(
+pub(crate) async fn require_music_permission(
     pool: &Pool,
     user: &AuthenticatedUser,
     permission: &str,
@@ -248,138 +201,6 @@ async fn require_music_permission(
         return Err(forbidden());
     }
     Ok(())
-}
-
-fn row_to_song(row: &tokio_postgres::Row) -> SongResponse {
-    SongResponse {
-        id: row.get("id"),
-        file_path: row.get("file_path"),
-        title: row.get("title"),
-        artist: row.get("artist"),
-        album: row.get("album"),
-        album_artist: row.get("album_artist"),
-        genre: row.get("genre"),
-        year: row.get("year"),
-        track_number: row.get("track_number"),
-        disc_number: row.get("disc_number"),
-        duration_seconds: row.get("duration_seconds"),
-        size_bytes: row.get("size_bytes"),
-        format: row.get("format"),
-        bitrate_kbps: row.get("bitrate_kbps"),
-        has_cover_art: row.get("has_cover_art"),
-        created_at: row
-            .get::<_, chrono::DateTime<chrono::Utc>>("created_at")
-            .to_rfc3339(),
-        updated_at: row
-            .get::<_, chrono::DateTime<chrono::Utc>>("updated_at")
-            .to_rfc3339(),
-    }
-}
-
-// ── REST endpoints ──
-
-#[get("/music/songs?<page>&<limit>&<search>&<artist>&<album>&<genre>")]
-pub(crate) async fn list_songs(
-    pool: &State<Pool>,
-    _user: AuthenticatedUser,
-    page: Option<i64>,
-    limit: Option<i64>,
-    search: Option<String>,
-    artist: Option<String>,
-    album: Option<String>,
-    genre: Option<String>,
-) -> Result<Json<SongListResponse>, (Status, Json<serde_json::Value>)> {
-    let page = page.unwrap_or(1).max(1);
-    let limit = limit.unwrap_or(50).clamp(1, 200);
-    let offset = (page - 1) * limit;
-    let client = get_client(pool).await?;
-
-    let mut qb = QueryBuilder::new();
-    let mut conditions = Vec::new();
-
-    if let Some(ref s) = search {
-        let p = qb.add(format!("%{s}%"));
-        conditions.push(format!(
-            "(title ILIKE {p} OR artist ILIKE {p} OR album ILIKE {p})"
-        ));
-    }
-    if let Some(ref a) = artist {
-        let p = qb.add(format!("%{a}%"));
-        conditions.push(format!("artist ILIKE {p}"));
-    }
-    if let Some(ref a) = album {
-        let p = qb.add(format!("%{a}%"));
-        conditions.push(format!("album ILIKE {p}"));
-    }
-    if let Some(ref g) = genre {
-        let p = qb.add(format!("%{g}%"));
-        conditions.push(format!("genre ILIKE {p}"));
-    }
-
-    let where_clause = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", conditions.join(" AND "))
-    };
-    let total: i64 = client
-        .query_one(
-            &format!("SELECT COUNT(*) FROM songs {where_clause}"),
-            &qb.as_slice(),
-        )
-        .await
-        .map_err(db_error)?
-        .get(0);
-
-    let lim_p = qb.add_int(limit);
-    let off_p = qb.add_int(offset);
-    let rows = client.query(
-        &format!("SELECT * FROM songs {where_clause} ORDER BY artist, album, disc_number, track_number, title LIMIT {lim_p} OFFSET {off_p}"),
-        &qb.as_slice(),
-    ).await.map_err(db_error)?;
-
-    let songs: Vec<SongResponse> = rows.iter().map(|r| row_to_song(r)).collect();
-    Ok(Json(SongListResponse {
-        songs,
-        total,
-        page,
-        limit,
-    }))
-}
-
-#[delete("/music/songs/<id>")]
-pub(crate) async fn delete_song(
-    pool: &State<Pool>,
-    user: AuthenticatedUser,
-    id: &str,
-) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
-    require_music_permission(pool, &user, "music_delete").await?;
-    let song_id = Uuid::parse_str(id).map_err(|_| not_found("Invalid song ID"))?;
-    let client = get_client(pool).await?;
-    let row = client
-        .query_opt("SELECT file_path FROM songs WHERE id = $1", &[&song_id])
-        .await
-        .map_err(db_error)?
-        .ok_or_else(|| not_found("Song not found"))?;
-    let file_path: String = row.get("file_path");
-
-    let full_path = Path::new(MUSIC_ROOT).join(&file_path);
-    if let Err(e) = fs::remove_file(&full_path).await {
-        eprintln!("Warning: could not delete file {file_path}: {e}");
-    }
-
-    let covers_dir = Path::new(MUSIC_ROOT).join(".covers");
-    let cover_base = file_path.replace(['/', '\\', ' '], "_").replace('.', "_");
-    for ext in &["jpg", "png", "gif"] {
-        fs::remove_file(covers_dir.join(format!("{cover_base}.{ext}")))
-            .await
-            .ok();
-    }
-
-    client
-        .execute("DELETE FROM songs WHERE id = $1", &[&song_id])
-        .await
-        .map_err(db_error)?;
-    Ok(Json(serde_json::json!({"message": "Song deleted"})))
 }
 
 #[put("/music/songs/<id>/tags", data = "<req>")]
@@ -450,96 +271,6 @@ pub(crate) async fn scan_songs(
     Ok(Json(
         serde_json::json!({"message": "Scan complete", "scanned": scanned, "failed": failed}),
     ))
-}
-
-#[get("/music/library?<page>&<limit>&<search>")]
-pub(crate) async fn list_personal_library(
-    pool: &State<Pool>,
-    user: AuthenticatedUser,
-    page: Option<i64>,
-    limit: Option<i64>,
-    search: Option<String>,
-) -> Result<Json<SongListResponse>, (Status, Json<serde_json::Value>)> {
-    let page = page.unwrap_or(1).max(1);
-    let limit = limit.unwrap_or(50).clamp(1, 200);
-    let offset = (page - 1) * limit;
-    let client = get_client(pool).await?;
-
-    let mut qb = QueryBuilder::new();
-    let uid_p = qb.add_uuid(user.id);
-    let search_filter = if let Some(ref s) = search {
-        let p = qb.add(format!("%{s}%"));
-        format!("AND (s.title ILIKE {p} OR s.artist ILIKE {p} OR s.album ILIKE {p})")
-    } else {
-        String::new()
-    };
-
-    let total: i64 = client.query_one(
-        &format!("SELECT COUNT(*) FROM user_songs us JOIN songs s ON us.song_id=s.id WHERE us.user_id={uid_p} {search_filter}"),
-        &qb.as_slice(),
-    ).await.map_err(db_error)?.get(0);
-
-    let lim_p = qb.add_int(limit);
-    let off_p = qb.add_int(offset);
-    let rows = client.query(
-        &format!("SELECT s.* FROM user_songs us JOIN songs s ON us.song_id=s.id WHERE us.user_id={uid_p} {search_filter} ORDER BY s.artist,s.album,s.disc_number,s.track_number,s.title LIMIT {lim_p} OFFSET {off_p}"),
-        &qb.as_slice(),
-    ).await.map_err(db_error)?;
-
-    let songs: Vec<SongResponse> = rows.iter().map(|r| row_to_song(r)).collect();
-    Ok(Json(SongListResponse {
-        songs,
-        total,
-        page,
-        limit,
-    }))
-}
-
-#[post("/music/library/<song_id>")]
-pub(crate) async fn add_to_library(
-    pool: &State<Pool>,
-    user: AuthenticatedUser,
-    song_id: &str,
-) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
-    let song_id = Uuid::parse_str(song_id).map_err(|_| not_found("Invalid song ID"))?;
-    let client = get_client(pool).await?;
-    if !client
-        .query_opt("SELECT 1 FROM songs WHERE id=$1", &[&song_id])
-        .await
-        .map_err(db_error)?
-        .is_some()
-    {
-        return Err(not_found("Song not found"));
-    }
-    client
-        .execute(
-            "INSERT INTO user_songs (user_id,song_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
-            &[&user.id, &song_id],
-        )
-        .await
-        .map_err(db_error)?;
-    Ok(Json(serde_json::json!({"message": "Added to library"})))
-}
-
-#[delete("/music/library/<song_id>")]
-pub(crate) async fn remove_from_library(
-    pool: &State<Pool>,
-    user: AuthenticatedUser,
-    song_id: &str,
-) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
-    let song_id = Uuid::parse_str(song_id).map_err(|_| not_found("Invalid song ID"))?;
-    let client = get_client(pool).await?;
-    let deleted = client
-        .execute(
-            "DELETE FROM user_songs WHERE user_id=$1 AND song_id=$2",
-            &[&user.id, &song_id],
-        )
-        .await
-        .map_err(db_error)?;
-    if deleted == 0 {
-        return Err(not_found("Song not in your library"));
-    }
-    Ok(Json(serde_json::json!({"message": "Removed from library"})))
 }
 
 // ── File tag writing ──

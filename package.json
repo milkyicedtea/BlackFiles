@@ -4,8 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "bunx vite",
     "build": "bunx --bun vite build",
+    "dev": "bunx vite",
+    "duplicates:all": "bun run duplicates:client && bun run duplicates:server",
+    "duplicates:client": "bunx --bun jscpd src/client",
+    "duplicates:server": "bunx --bun jscpd src/server",
     "everything": "bun run fmt && bun run lint && bun run typecheck",
     "fmt": "biome check --write && cargo fmt",
     "lint": "biome check --write && cargo clippy",

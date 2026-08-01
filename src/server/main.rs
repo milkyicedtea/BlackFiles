@@ -1,65 +1,53 @@
 #[macro_use]
 extern crate rocket;
 
-mod api_keys;
 mod auth;
 mod db;
 mod files;
 mod frontend;
-mod guards;
-mod list;
 mod models;
 mod music;
-mod music_upload;
+mod opensubsonic;
 mod shared;
-mod subsonic;
 pub mod test;
-mod tus;
-mod upload_links;
 
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::fs::FileServer;
 use rocket::{Build, Rocket};
 
-use crate::api_keys::{
-    admin_revoke_api_key, create_api_key, list_all_api_keys, list_my_api_keys, revoke_api_key,
-};
 use crate::auth::{
-    check_auth, create_default_admin, create_role, create_user, delete_role, delete_user, get_role,
-    list_permissions, list_roles, list_users, login, logout, me, move_role, refresh, update_role,
-    update_user_password, update_user_role,
+    admin_revoke_api_key, login::check_auth, create_api_key, create_default_admin, create_role,
+    create_user, delete_role, delete_user, get_role, list_all_api_keys, list_my_api_keys,
+    list_permissions, list_roles, list_users, login::login, login::logout, login::me,
+    login::refresh, move_role, revoke_api_key, update_role, update_user_password, update_user_role,
 };
-use crate::files::{create_folder, delete_path, download, rename_path};
+use crate::files::{
+    create_folder, create_public_tus_upload, create_tus_upload, create_upload_link, delete_path,
+    delete_upload_link, download::download, get_public_upload_link, head_public_tus_upload,
+    list_directory, list_root, list_tus_uploads, list_upload_links, patch_public_tus_upload,
+    patch_tus_upload, public_tus_options, rename_path, terminate_public_tus_upload,
+    terminate_tus_upload, tus_options, head_tus_upload
+};
 use crate::frontend::frontend_fallback;
-use crate::list::{list_directory, list_root};
 use crate::music::{
-    add_to_library, delete_song, list_personal_library, list_songs, remove_from_library,
-    scan_songs, update_song_tags,
+    add_to_library, create_music_upload, delete_song, head_music_upload, list_personal_library,
+    list_songs, music_tus_options, patch_music_upload, remove_from_library, scan_songs,
+    terminate_music_upload, update_song_tags,
 };
-use crate::music_upload::{
-    create_music_upload, head_music_upload, music_tus_options, patch_music_upload,
-    terminate_music_upload,
+use crate::opensubsonic::{
+    create_playlist, delete_playlist, get_album, get_album_list, get_album_list2, get_artist,
+    get_artists, get_cover_art, get_genres, get_indexes, get_license, get_music_directory,
+    get_music_folders, get_now_playing, get_open_subsonic_extensions, get_playlist, get_playlists,
+    get_random_songs, get_song, get_starred, get_starred2, ping, scrobble, search2, search3, star,
+    stream, subsonic_download, unstar, update_playlist,
 };
 use crate::shared::api_error;
-use crate::subsonic::{
-    get_album, get_album_list, get_album_list2, get_artist, get_artists, get_cover_art, get_genres,
-    get_indexes, get_license, get_music_directory, get_music_folders, get_open_subsonic_extensions,
-    get_random_songs, get_song, ping, search2, search3, stream, subsonic_download,
-};
-use crate::tus::{
-    create_public_tus_upload, create_tus_upload, head_public_tus_upload, head_tus_upload,
-    list_tus_uploads, patch_public_tus_upload, patch_tus_upload, public_tus_options,
-    terminate_public_tus_upload, terminate_tus_upload, tus_options,
-};
-use crate::upload_links::{
-    create_upload_link, delete_upload_link, get_public_upload_link, list_upload_links,
-};
 
 fn prepare_dirs() {
-    std::fs::create_dir_all(shared::STORAGE_ROOT).ok();
-    std::fs::create_dir_all(shared::MUSIC_ROOT).ok();
+    std::fs::create_dir_all(crate::shared::STORAGE_ROOT).ok();
+    std::fs::create_dir_all(crate::shared::MUSIC_ROOT).ok();
     std::fs::create_dir_all("storage/music/.covers").ok();
-    std::fs::create_dir_all(shared::BUILD_ROOT).ok();
+    std::fs::create_dir_all(crate::shared::BUILD_ROOT).ok();
 }
 
 #[launch]
@@ -155,10 +143,21 @@ fn rocket() -> _ {
                 get_cover_art,
                 search2,
                 search3,
-                get_random_songs
+                get_random_songs,
+                get_playlists,
+                get_playlist,
+                create_playlist,
+                update_playlist,
+                delete_playlist,
+                star,
+                unstar,
+                get_starred,
+                get_starred2,
+                scrobble,
+                get_now_playing,
             ],
         )
-        .mount("/", FileServer::from(shared::BUILD_ROOT))
+        .mount("/", FileServer::from(crate::shared::BUILD_ROOT))
         .mount("/", routes![frontend_fallback])
 }
 

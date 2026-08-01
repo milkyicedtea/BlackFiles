@@ -8,12 +8,12 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio_postgres::error::SqlState;
 use uuid::Uuid;
 
-use crate::guards::{AuthenticatedUser, check_permission};
+use crate::auth::guards::{AuthenticatedUser, check_permission};
 use crate::shared::{
     MUSIC_ROOT, bad_request, conflict, db_error, forbidden, get_client, not_found, server_error,
 };
 
-use super::tus::{
+use crate::files::tus::{
     ApiError, TusHeaders, TusResponse, cleanup_expired_uploads, destination_from_metadata,
     parse_upload_id, temporary_path,
 };
@@ -278,7 +278,7 @@ async fn finalize_music_upload(
             }
 
             // Scan ID3/Vorbis tags and insert into songs table
-            if let Err(error) = super::music::scan_and_insert_song(pool, target_path).await {
+            if let Err(error) = super::scan_and_insert_song(pool, target_path).await {
                 eprintln!("Failed to scan tags for {target_path}: {error}");
                 // File still exists on disk; scan can be retried later
             }

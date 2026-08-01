@@ -7,7 +7,7 @@ use rocket::serde::{Deserialize, Serialize, json::Json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::guards::AuthenticatedUser;
+use super::guards::AuthenticatedUser;
 use crate::shared::{db_error, forbidden, get_client, not_found};
 
 // ── Response types ──
@@ -121,7 +121,7 @@ pub(crate) async fn list_my_api_keys(
         "SELECT id, label, last_used_at, created_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC",
         &[&user.id],
     ).await.map_err(db_error)?;
-    let keys: Vec<ApiKeyResponse> = rows.iter().map(|r| row_to_key(r)).collect();
+    let keys: Vec<ApiKeyResponse> = rows.iter().map(row_to_key).collect();
     Ok(Json(ApiKeyListResponse { keys }))
 }
 
@@ -135,11 +135,11 @@ pub(crate) async fn create_api_key(
     let (key, key_hash) = loop {
         let key = generate_api_key();
         let hash = hash_api_key(&key);
-        if !client
+        if client
             .query_opt("SELECT 1 FROM api_keys WHERE key_hash = $1", &[&hash])
             .await
             .map_err(db_error)?
-            .is_some()
+            .is_none()
         {
             break (key, hash);
         }
@@ -203,7 +203,7 @@ pub(crate) async fn list_all_api_keys(
         "SELECT ak.id, ak.user_id, u.username, ak.label, ak.last_used_at, ak.created_at FROM api_keys ak JOIN users u ON ak.user_id = u.id ORDER BY ak.created_at DESC",
         &[],
     ).await.map_err(db_error)?;
-    let keys: Vec<AdminApiKeyResponse> = rows.iter().map(|r| row_to_admin_key(r)).collect();
+    let keys: Vec<AdminApiKeyResponse> = rows.iter().map(row_to_admin_key).collect();
     Ok(Json(AdminApiKeyListResponse { keys }))
 }
 

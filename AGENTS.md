@@ -24,22 +24,34 @@ Blackfiles is a self-hosted file storage and music library server. It has two ma
 ```
 src/
   server/           ← Rust backend
-    main.rs         ← Rocket launch, route registration
-    auth.rs         ← Login/logout, JWT, user/role CRUD
-    guards.rs       ← AuthenticatedUser request guard, check_permission
-    models.rs       ← Shared data types (User, Role, Claims, etc.)
-    shared.rs       ← Constants (STORAGE_ROOT, MUSIC_ROOT), error helpers, FileEntry
-    db.rs           ← PostgreSQL pool init, feature script runner
-    files.rs        ← Download, delete, create folder, rename (file storage)
-    list.rs         ← Directory listing (file storage)
-    tus.rs          ← TUS resumable uploads (file storage)
-    upload_links.rs ← One-time public upload links
-    frontend.rs     ← SPA fallback handler
-    # Music (new)
-    music.rs        ← Tag scanner, song CRUD, personal library
-    music_upload.rs ← TUS uploads for music (post-upload tag scanning)
-    api_keys.rs     ← API key management (user + admin), ApiKeyUser guard
-    subsonic.rs     ← OpenSubsonic API: response envelope, SubsonicUser guard, system endpoints
+    lib.rs           ← Shared infrastructure crate (models, shared)
+    main.rs          ← Rocket launch, route registration
+    db.rs            ← PostgreSQL pool init, feature script runner
+    frontend.rs      ← SPA fallback handler
+    models.rs        ← Shared data types (User, Role, Claims, etc.) — lib crate
+    shared.rs        ← Constants (STORAGE_ROOT, MUSIC_ROOT), error helpers — lib crate
+
+    auth/            ← Authentication subsystem
+      mod.rs         ← Login/logout, JWT, user/role CRUD
+      api_keys.rs    ← API key management (user + admin), ApiKeyUser guard
+      guards.rs      ← AuthenticatedUser request guard, check_permission
+
+    files/           ← File storage subsystem
+      mod.rs         ← Download, delete, create folder, rename
+      list.rs        ← Directory listing
+      tus.rs         ← TUS resumable uploads
+      upload_links.rs ← One-time public upload links
+
+    music/           ← Music library subsystem
+      mod.rs         ← Tag scanner, song CRUD, personal library
+      upload.rs      ← TUS uploads for music (post-upload tag scanning)
+
+    opensubsonic/    ← OpenSubsonic API
+      mod.rs         ← Response envelope, SubsonicUser/SubsonicQuery guards, shared helpers, system endpoints
+      browse.rs      ← Browsing endpoints (getMusicFolders → getGenres)
+      media.rs       ← Media & search endpoints (stream, download, getCoverArt, search, getRandomSongs)
+      annotations.rs ← Playlists, star/unstar, getStarred, scrobble, getNowPlaying
+
   client/            ← React frontend (TypeScript)
     routes/          ← File-based routing (TanStack Router)
     hooks/           ← Auth, upload, directory, file operations
@@ -70,6 +82,7 @@ Current migrations:
 - `0004_upload_sessions.sql` — TUS upload sessions
 - `0005_public_upload_sessions.sql` — public TUS support
 - `0006_music_library.sql` — songs, user_songs, cover_art, api_keys, playlists, starred, scrobbles
+- `0007_starred_artist.sql` — relax starred CHECK to allow artist-only stars + unique index
 
 ## API Route Structure
 
@@ -100,7 +113,13 @@ Current migrations:
 - `GET /rest/ping` — health check
 - `GET /rest/getLicense` — license
 - `GET /rest/getOpenSubsonicExtensions` — capabilities
-- (More endpoints coming in Phase 4+)
+- `GET /rest/getMusicFolders`, `getIndexes`, `getMusicDirectory`, `getArtists`, `getArtist`, `getAlbum`, `getSong` — browsing
+- `GET /rest/getAlbumList`/`getAlbumList2`, `getGenres` — lists & genres
+- `GET /rest/stream`, `download`, `getCoverArt` — media & art
+- `GET /rest/search2`/`search3`, `getRandomSongs` — search & random
+- `GET /rest/getPlaylists`, `getPlaylist`, `createPlaylist`, `updatePlaylist`, `deletePlaylist` — playlists
+- `GET /rest/star`, `unstar`, `getStarred`, `getStarred2` — starred
+- `GET /rest/scrobble`, `getNowPlaying` — scrobbling
 
 ## Auth Architecture
 
@@ -154,9 +173,9 @@ See `ROADMAP_MUSIC.md` for the music library implementation plan. Current status
 - [x] Phase 1 — Upload & Tag Scanning
 - [x] Phase 2 — API Keys
 - [x] Phase 3 — OpenSubsonic Scaffolding
-- [ ] Phase 4 — OpenSubsonic Browsing
-- [ ] Phase 5 — OpenSubsonic Media & Search
-- [ ] Phase 6 — OpenSubsonic Playlists & Annotations
+- [x] Phase 4 — OpenSubsonic Browsing
+- [x] Phase 5 — OpenSubsonic Media & Search
+- [x] Phase 6 — OpenSubsonic Playlists & Annotations
 - [ ] Phase 7 — Blackfiles Music UI
 - [ ] Phase 8 — Polish & Tier 2/3 Endpoints
 

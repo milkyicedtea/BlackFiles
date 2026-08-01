@@ -13,12 +13,12 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio_postgres::error::SqlState;
 use uuid::Uuid;
 
-use crate::guards::{AuthenticatedUser, check_permission};
+use super::upload_links::hash_token;
+use crate::auth::guards::{AuthenticatedUser, check_permission};
 use crate::shared::{
     STORAGE_ROOT, bad_request, conflict, db_error, forbidden, get_client, not_found,
     path_to_web_string, sanitize_path, server_error,
 };
-use crate::upload_links::hash_token;
 
 const TUS_VERSION: &str = "1.0.0";
 const TUS_CHUNK_SIZE: u64 = 8 * 1024 * 1024;

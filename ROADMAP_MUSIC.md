@@ -321,10 +321,9 @@ The current settings pages move under `/admin/`. New personal settings pages are
 - [x] `getRandomSongs`.
 
 ### Phase 6 — OpenSubsonic Playlists & Annotations
-
-- [ ] `getPlaylists`, `getPlaylist`, `createPlaylist`, `updatePlaylist`, `deletePlaylist`.
-- [ ] `star`/`unstar`, `getStarred`/`getStarred2`.
-- [ ] `scrobble`, `getNowPlaying`.
+- [x] `getPlaylists`, `getPlaylist`, `createPlaylist`, `updatePlaylist`, `deletePlaylist`.
+- [x] `star`/`unstar`, `getStarred`/`getStarred2`.
+- [x] `scrobble`, `getNowPlaying`.
 
 ### Phase 7 — Blackfiles Music UI & Settings Restructure
 
