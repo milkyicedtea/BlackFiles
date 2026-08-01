@@ -1,6 +1,6 @@
 use super::*;
 
-// ── Shared helpers (pub(super) for sub-modules) ──
+// ── Shared helpers (pub(super) for submodules) ──
 
 // ── Phase 4: Browsing endpoints ──
 
@@ -104,28 +104,6 @@ pub(super) async fn get_user_song(
 }
 
 pub(crate) struct RangeHeader(pub(crate) Option<String>);
-
-// ── URL decode ──
-
-pub(super) fn url_decode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '%' => {
-                let hex: String = chars.by_ref().take(2).collect();
-                if let Ok(b) = u8::from_str_radix(&hex, 16) {
-                    out.push(b as char);
-                } else {
-                    out.push('%');
-                }
-            }
-            '+' => out.push(' '),
-            _ => out.push(c),
-        }
-    }
-    out
-}
 
 // ── Phase 6 helpers ──
 

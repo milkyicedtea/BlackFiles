@@ -35,9 +35,8 @@ pub(crate) async fn star(
     user: SubsonicUser,
     query: SubsonicQuery,
 ) -> Json<serde_json::Value> {
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return db_err_resp(),
+    let Ok(client) = pool.get().await else {
+        return db_err_resp();
     };
 
     // Songs
@@ -138,9 +137,8 @@ pub(crate) async fn unstar(
     user: SubsonicUser,
     query: SubsonicQuery,
 ) -> Json<serde_json::Value> {
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return db_err_resp(),
+    let Ok(client) = pool.get().await else {
+        return db_err_resp();
     };
 
     for sid in query.all("id") {
@@ -234,24 +232,10 @@ async fn build_starred(
     let albums = Some(
         album_rows
             .iter()
-            .map(|r| {
-                let artist: String = r.get("artist_name");
-                let album: String = r.get("album_name");
-                let has_cover: bool = r.get("has_cover");
-                AlbumRef {
-                    id: album_id(&artist, &album),
-                    name: album.clone(),
-                    artist: artist.clone(),
-                    year: r.try_get("year").ok(),
-                    genre: r.try_get("genre").ok(),
-                    cover_art: if has_cover {
-                        Some(album_id(&artist, &album))
-                    } else {
-                        None
-                    },
-                    song_count: r.get::<_, i64>("cnt"),
-                    duration: Some(r.get::<_, f64>("dur")),
-                }
+            .map(|r| AlbumRef {
+                info: AlbumInfo::from_row(r, "artist_name", "album_name"),
+                song_count: r.get("cnt"),
+                duration: Some(r.get("dur")),
             })
             .collect::<Vec<_>>(),
     );
@@ -274,15 +258,16 @@ async fn build_starred(
     })
 }
 
+async fn starred_container(pool: &Pool, user_id: Uuid) -> Result<StarredContainer, ()> {
+    let client = pool.get().await.map_err(|_| ())?;
+    build_starred(&client, user_id).await
+}
+
 #[get("/rest/getStarred")]
 pub(crate) async fn get_starred(pool: &State<Pool>, user: SubsonicUser) -> Json<serde_json::Value> {
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return db_err_resp(),
-    };
-    let container = match build_starred(&client, user.id).await {
-        Ok(c) => c,
-        Err(_) => return db_err_resp(),
+    let container = match starred_container(pool, user.id).await {
+        Ok(container) => container,
+        Err(()) => return db_err_resp(),
     };
     ok_resp(StarredResponse { starred: container })
 }
@@ -292,13 +277,9 @@ pub(crate) async fn get_starred2(
     pool: &State<Pool>,
     user: SubsonicUser,
 ) -> Json<serde_json::Value> {
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return db_err_resp(),
-    };
-    let container = match build_starred(&client, user.id).await {
-        Ok(c) => c,
-        Err(_) => return db_err_resp(),
+    let container = match starred_container(pool, user.id).await {
+        Ok(container) => container,
+        Err(()) => return db_err_resp(),
     };
     ok_resp(Starred2Response {
         starred2: container,

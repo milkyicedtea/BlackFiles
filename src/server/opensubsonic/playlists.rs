@@ -50,6 +50,20 @@ pub struct PlaylistDetail {
     pub entry: Vec<SongEntry>,
 }
 
+async fn playlist_owner(
+    client: &impl deadpool_postgres::GenericClient,
+    playlist_id: Uuid,
+) -> Result<Option<Uuid>, ()> {
+    client
+        .query_opt(
+            "SELECT user_id FROM playlists WHERE id = $1",
+            &[&playlist_id],
+        )
+        .await
+        .map(|row| row.map(|row| row.get("user_id")))
+        .map_err(|_| ())
+}
+
 // ── Phase 6: Playlists ──
 
 #[get("/rest/getPlaylists")]
@@ -57,9 +71,8 @@ pub(crate) async fn get_playlists(
     pool: &State<Pool>,
     user: SubsonicUser,
 ) -> Json<serde_json::Value> {
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return db_err_resp(),
+    let Ok(client) = pool.get().await else {
+        return db_err_resp();
     };
     let rows = match client
         .query(
@@ -106,13 +119,11 @@ pub(crate) async fn get_playlist(
     user: SubsonicUser,
     id: String,
 ) -> Json<serde_json::Value> {
-    let pid = match Uuid::parse_str(&id) {
-        Ok(u) => u,
-        Err(_) => return not_found_resp(),
+    let Ok(pid) = Uuid::parse_str(&id) else {
+        return not_found_resp();
     };
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return db_err_resp(),
+    let Ok(client) = pool.get().await else {
+        return db_err_resp();
     };
     let row = match client
         .query_opt(
@@ -190,9 +201,8 @@ pub(crate) async fn create_playlist(
         }
     }
 
-    let mut client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return db_err_resp(),
+    let Ok(mut client) = pool.get().await else {
+        return db_err_resp();
     };
     let songs = match personal_song_ids(&client, user.id, &requested).await {
         Ok(v) => v,
@@ -216,13 +226,10 @@ pub(crate) async fn create_playlist(
             Ok(u) => u,
             Err(_) => return not_found_resp(),
         };
-        let owner = match tx
-            .query_opt("SELECT user_id FROM playlists WHERE id = $1", &[&pid])
-            .await
-        {
-            Ok(Some(r)) => r.get::<_, Uuid>("user_id"),
+        let owner = match playlist_owner(&tx, pid).await {
+            Ok(Some(owner)) => owner,
             Ok(None) => return not_found_resp(),
-            Err(_) => return db_err_resp(),
+            Err(()) => return db_err_resp(),
         };
         if owner != user.id {
             return not_found_resp();
@@ -295,19 +302,15 @@ pub(crate) async fn update_playlist(
         None => return param_err("Required parameter 'playlistId' is missing"),
     };
 
-    let mut client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return db_err_resp(),
+    let Ok(mut client) = pool.get().await else {
+        return db_err_resp();
     };
 
     // Ownership check.
-    let owner = match client
-        .query_opt("SELECT user_id FROM playlists WHERE id = $1", &[&pid])
-        .await
-    {
-        Ok(Some(r)) => r.get::<_, Uuid>("user_id"),
+    let owner = match playlist_owner(&client, pid).await {
+        Ok(Some(owner)) => owner,
         Ok(None) => return not_found_resp(),
-        Err(_) => return db_err_resp(),
+        Err(()) => return db_err_resp(),
     };
     if owner != user.id {
         return not_found_resp();
@@ -448,9 +451,8 @@ pub(crate) async fn delete_playlist(
         Some(u) => u,
         None => return param_err("Required parameter 'id' is missing"),
     };
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return db_err_resp(),
+    let Ok(client) = pool.get().await else {
+        return db_err_resp();
     };
     let affected = match client
         .execute(

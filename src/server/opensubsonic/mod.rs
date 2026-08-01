@@ -1,10 +1,10 @@
-// Re-export shared infrastructure for sub-modules.
-pub(crate) use crate::auth::api_keys::hash_api_key;
-pub(crate) use crate::shared::MUSIC_ROOT;
+// Re-export shared infrastructure for submodules.
+pub(crate) use crate::shared::{MUSIC_ROOT, sha256_hex, url_decode};
 pub(crate) use argon2::PasswordVerifier;
 pub(crate) use chrono::Utc;
 pub(crate) use deadpool_postgres::Pool;
 pub(crate) use rocket::State;
+pub(crate) use rocket::form::FromForm;
 pub(crate) use rocket::http::Status;
 pub(crate) use rocket::http::{ContentType, Header};
 pub(crate) use rocket::request::{FromRequest, Outcome, Request};
@@ -16,7 +16,7 @@ pub(crate) use tokio::fs::File;
 pub(crate) use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 pub(crate) use uuid::Uuid;
 
-// Sub-modules
+// Submodules
 pub(crate) mod browse;
 pub(crate) mod envelope;
 pub(crate) mod guards;

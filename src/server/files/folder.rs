@@ -9,12 +9,7 @@ pub async fn create_folder(
     user: AuthenticatedUser,
     request: Json<CreateFolderRequest>,
 ) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
-    let has_perm = check_permission(pool, user.id, "create_folders")
-        .await
-        .unwrap_or(false);
-    if !has_perm {
-        return Err(forbidden());
-    }
+    require_permission(pool, user.id, "create_folders").await?;
 
     let name = request.name.trim().to_string();
     if name.is_empty() || name.contains('/') || name.contains('\0') {

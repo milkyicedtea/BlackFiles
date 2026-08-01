@@ -1,16 +1,13 @@
 // Re-export shared infrastructure for sub-modules.
-pub(crate) use crate::auth::guards::{AuthenticatedUser, check_permission};
+pub(crate) use crate::auth::{AuthenticatedUser, require_permission};
 pub(crate) use crate::shared::*;
 pub(crate) use deadpool_postgres::Pool;
 pub(crate) use lofty::prelude::*;
-pub(crate) use lofty::probe::Probe;
 pub(crate) use rocket::State;
 pub(crate) use rocket::http::Status;
 pub(crate) use rocket::serde::json::Json;
 pub(crate) use rocket::serde::{Deserialize, Serialize};
-pub(crate) use std::path::Path;
 pub(crate) use tokio::fs;
-pub(crate) use uuid::Uuid;
 
 // Sub-modules
 pub(crate) mod crud;

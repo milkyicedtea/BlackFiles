@@ -1,12 +1,50 @@
 use super::*;
 
 use crate::models::{
-    AuthError, CreateRoleRequest, CreateUserRequest, LoginResponse, MoveDirection, MoveRoleRequest,
+    CreateRoleRequest, CreateUserRequest, LoginResponse, MoveDirection, MoveRoleRequest,
     PaginationParams, RoleWithPermissions, UpdateRoleRequest, UpdateUserPasswordRequest,
     UpdateUserRoleRequest, User,
 };
-use rocket::http::{CookieJar, Status};
+use rocket::http::Status;
 use uuid::Uuid;
+
+type SqlParam<'a> = &'a (dyn tokio_postgres::types::ToSql + Sync);
+
+fn like_pattern(value: Option<&String>) -> Option<String> {
+    value.map(|value| format!("%{value}%"))
+}
+
+fn add_filter<'a>(
+    conditions: &mut Vec<String>,
+    params: &mut Vec<SqlParam<'a>>,
+    value: Option<&'a String>,
+    condition: impl FnOnce(usize) -> String,
+) {
+    if let Some(value) = value {
+        conditions.push(condition(params.len() + 1));
+        params.push(value);
+    }
+}
+
+fn where_clause(conditions: &[String]) -> String {
+    if conditions.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", conditions.join(" AND "))
+    }
+}
+
+async fn query_page<'a>(
+    client: &deadpool_postgres::Object,
+    sql: &str,
+    mut params: Vec<SqlParam<'a>>,
+    limit: &'a i64,
+    offset: &'a i64,
+) -> Result<Vec<tokio_postgres::Row>, tokio_postgres::Error> {
+    params.push(limit);
+    params.push(offset);
+    client.query(sql, &params).await
+}
 
 /// POST /api/users — Create a new user (admin only)
 #[post("/users", data = "<create>")]
@@ -15,12 +53,7 @@ pub async fn create_user(
     user: AuthenticatedUser,
     create: Json<CreateUserRequest>,
 ) -> Result<Json<LoginResponse>, (Status, Json<serde_json::Value>)> {
-    if !check_permission(pool, user.id, "create_user")
-        .await
-        .unwrap_or(false)
-    {
-        return Err(forbidden());
-    }
+    require_permission(pool, user.id, "create_user").await?;
 
     if create.username.is_empty() || create.password.is_empty() {
         return Err(bad_request("Username and password are required"));
@@ -89,40 +122,34 @@ pub async fn list_users(
     user: AuthenticatedUser,
     pagination: PaginationParams,
 ) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
-    if !check_permission(pool, user.id, "view_users")
-        .await
-        .unwrap_or(false)
-    {
-        return Err(forbidden());
-    }
+    require_permission(pool, user.id, "view_users").await?;
 
     let client = get_client(pool).await?;
     let limit = pagination.effective_limit();
     let offset = pagination.effective_offset();
-    let search_pattern = pagination.search.as_ref().map(|s| format!("%{}%", s));
-    let username_pattern = pagination.username.as_ref().map(|s| format!("%{}%", s));
-
-    let mut conditions: Vec<String> = Vec::new();
-    let mut param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = Vec::new();
-
-    if let Some(ref sp) = search_pattern {
-        conditions.push(format!("u.username ILIKE ${}", param_refs.len() + 1));
-        param_refs.push(sp);
-    }
-    if let Some(ref up) = username_pattern {
-        conditions.push(format!("u.username ILIKE ${}", param_refs.len() + 1));
-        param_refs.push(up);
-    }
-    if let Some(ref rn) = pagination.role_name {
-        conditions.push(format!("r.name = ${}", param_refs.len() + 1));
-        param_refs.push(rn);
-    }
-
-    let where_clause = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", conditions.join(" AND "))
-    };
+    let search_pattern = like_pattern(pagination.search.as_ref());
+    let username_pattern = like_pattern(pagination.username.as_ref());
+    let mut conditions = Vec::new();
+    let mut param_refs: Vec<SqlParam<'_>> = Vec::new();
+    add_filter(
+        &mut conditions,
+        &mut param_refs,
+        search_pattern.as_ref(),
+        |index| format!("u.username ILIKE ${index}"),
+    );
+    add_filter(
+        &mut conditions,
+        &mut param_refs,
+        username_pattern.as_ref(),
+        |index| format!("u.username ILIKE ${index}"),
+    );
+    add_filter(
+        &mut conditions,
+        &mut param_refs,
+        pagination.role_name.as_ref(),
+        |index| format!("r.name = ${index}"),
+    );
+    let where_clause = where_clause(&conditions);
 
     let count_sql = format!(
         "SELECT COUNT(*) FROM users u JOIN roles r ON u.role_id = r.id {}",
@@ -147,12 +174,7 @@ pub async fn list_users(
         param_refs.len() + 2,
     );
 
-    let mut all_params = param_refs;
-    all_params.push(&limit);
-    all_params.push(&offset);
-
-    let rows = client
-        .query(&data_sql, &all_params)
+    let rows = query_page(&client, &data_sql, param_refs, &limit, &offset)
         .await
         .map_err(db_error)?;
 
@@ -171,34 +193,30 @@ pub async fn list_roles(
     let client = get_client(pool).await?;
     let limit = pagination.effective_limit();
     let offset = pagination.effective_offset();
-    let search_pattern = pagination.search.as_ref().map(|s| format!("%{}%", s));
-    let name_pattern = pagination.name.as_ref().map(|s| format!("%{}%", s));
-    let display_name_pattern = pagination.display_name.as_ref().map(|s| format!("%{}%", s));
-
-    let mut conditions: Vec<String> = Vec::new();
-    let mut param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = Vec::new();
-
-    if let Some(ref sp) = search_pattern {
-        conditions.push(format!(
-            "(r.name ILIKE ${0} OR r.display_name ILIKE ${0})",
-            param_refs.len() + 1
-        ));
-        param_refs.push(sp);
-    }
-    if let Some(ref np) = name_pattern {
-        conditions.push(format!("r.name ILIKE ${}", param_refs.len() + 1));
-        param_refs.push(np);
-    }
-    if let Some(ref dp) = display_name_pattern {
-        conditions.push(format!("r.display_name ILIKE ${}", param_refs.len() + 1));
-        param_refs.push(dp);
-    }
-
-    let where_clause = if conditions.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", conditions.join(" AND "))
-    };
+    let search_pattern = like_pattern(pagination.search.as_ref());
+    let name_pattern = like_pattern(pagination.name.as_ref());
+    let display_name_pattern = like_pattern(pagination.display_name.as_ref());
+    let mut conditions = Vec::new();
+    let mut param_refs: Vec<SqlParam<'_>> = Vec::new();
+    add_filter(
+        &mut conditions,
+        &mut param_refs,
+        search_pattern.as_ref(),
+        |index| format!("(r.name ILIKE ${index} OR r.display_name ILIKE ${index})"),
+    );
+    add_filter(
+        &mut conditions,
+        &mut param_refs,
+        name_pattern.as_ref(),
+        |index| format!("r.name ILIKE ${index}"),
+    );
+    add_filter(
+        &mut conditions,
+        &mut param_refs,
+        display_name_pattern.as_ref(),
+        |index| format!("r.display_name ILIKE ${index}"),
+    );
+    let where_clause = where_clause(&conditions);
 
     let count_sql = format!("SELECT COUNT(*) FROM roles r {}", where_clause);
     let total: i64 = client
@@ -218,32 +236,15 @@ pub async fn list_roles(
         param_refs.len() + 2,
     );
 
-    let mut all_params = param_refs;
-    all_params.push(&limit);
-    all_params.push(&offset);
-
-    let rows = client
-        .query(&data_sql, &all_params)
+    let rows = query_page(&client, &data_sql, param_refs, &limit, &offset)
         .await
         .map_err(db_error)?;
 
     let mut roles: Vec<RoleWithPermissions> = Vec::new();
     for row in &rows {
-        let role_id: i32 = row.get("id");
-
-        let perm_rows = client
-            .query(
-                "SELECT p.name FROM permissions p
-                 JOIN role_permissions rp ON p.id = rp.permission_id
-                 WHERE rp.role_id = $1 ORDER BY p.group_name, p.name",
-                &[&role_id],
-            )
-            .await
-            .map_err(db_error)?;
-
-        let permissions: Vec<String> = perm_rows.iter().map(|r| r.get("name")).collect();
-
-        roles.push(row_to_role_with_permissions(row, permissions));
+        let role_id = row.get("id");
+        let permissions = role_permissions(&client, role_id).await.map_err(db_error)?;
+        roles.push(row_to_role(row, permissions));
     }
 
     Ok(Json(serde_json::json!({"data": roles, "total": total})))
@@ -268,21 +269,9 @@ pub async fn get_role(
         .map_err(db_error)?
         .ok_or_else(|| not_found("Role not found"))?;
 
-    let role_id: i32 = row.get("id");
-
-    let perm_rows = client
-        .query(
-            "SELECT p.name FROM permissions p
-             JOIN role_permissions rp ON p.id = rp.permission_id
-             WHERE rp.role_id = $1 ORDER BY p.group_name, p.name",
-            &[&role_id],
-        )
-        .await
-        .map_err(db_error)?;
-
-    let permissions: Vec<String> = perm_rows.iter().map(|r| r.get("name")).collect();
-
-    Ok(Json(row_to_role_with_permissions(&row, permissions)))
+    let role_id = row.get("id");
+    let permissions = role_permissions(&client, role_id).await.map_err(db_error)?;
+    Ok(Json(row_to_role(&row, permissions)))
 }
 
 /// POST /api/roles — Create a new role at the final position
@@ -292,12 +281,7 @@ pub async fn create_role(
     user: AuthenticatedUser,
     create: Json<CreateRoleRequest>,
 ) -> Result<Json<RoleWithPermissions>, (Status, Json<serde_json::Value>)> {
-    if !check_permission(pool, user.id, "manage_roles")
-        .await
-        .unwrap_or(false)
-    {
-        return Err(forbidden());
-    }
+    require_permission(pool, user.id, "manage_roles").await?;
 
     if create.name.is_empty() || create.display_name.is_empty() {
         return Err(bad_request("Name and display_name are required"));
@@ -332,16 +316,7 @@ pub async fn create_role(
         .await
         .map_err(db_error)?;
 
-    let response = RoleWithPermissions {
-        id: role_id,
-        name: role.get("name"),
-        display_name: role.get("display_name"),
-        position: role.get("position"),
-        color: role.get("color"),
-        permissions: create.permissions.clone(),
-        created_at: role.get("created_at"),
-        updated_at: role.get("updated_at"),
-    };
+    let response = row_to_role(&role, create.permissions.clone());
 
     transaction.commit().await.map_err(db_error)?;
     Ok(Json(response))
@@ -355,12 +330,7 @@ pub async fn update_role(
     id: i32,
     update: Json<UpdateRoleRequest>,
 ) -> Result<Json<RoleWithPermissions>, (Status, Json<serde_json::Value>)> {
-    if !check_permission(pool, user.id, "manage_roles")
-        .await
-        .unwrap_or(false)
-    {
-        return Err(forbidden());
-    }
+    require_permission(pool, user.id, "manage_roles").await?;
 
     if update.display_name.is_empty() {
         return Err(bad_request("display_name is required"));
@@ -389,16 +359,7 @@ pub async fn update_role(
         .await
         .map_err(db_error)?;
 
-    let response = RoleWithPermissions {
-        id: row.get("id"),
-        name: row.get("name"),
-        display_name: row.get("display_name"),
-        position: row.get("position"),
-        color: row.get("color"),
-        permissions: update.permissions.clone(),
-        created_at: row.get("created_at"),
-        updated_at: row.get("updated_at"),
-    };
+    let response = row_to_role(&row, update.permissions.clone());
 
     transaction.commit().await.map_err(db_error)?;
     Ok(Json(response))
@@ -412,12 +373,7 @@ pub async fn move_role(
     id: i32,
     move_request: Json<MoveRoleRequest>,
 ) -> Result<Json<RoleWithPermissions>, (Status, Json<serde_json::Value>)> {
-    if !check_permission(pool, user.id, "manage_roles")
-        .await
-        .unwrap_or(false)
-    {
-        return Err(forbidden());
-    }
+    require_permission(pool, user.id, "manage_roles").await?;
 
     let mut client = get_client(pool).await?;
     let transaction = client.transaction().await.map_err(db_error)?;
@@ -480,17 +436,8 @@ pub async fn move_role(
         )
         .await
         .map_err(db_error)?;
-    let permission_rows = transaction
-        .query(
-            "SELECT p.name FROM permissions p
-             JOIN role_permissions rp ON p.id = rp.permission_id
-             WHERE rp.role_id = $1 ORDER BY p.group_name, p.name",
-            &[&id],
-        )
-        .await
-        .map_err(db_error)?;
-    let permissions = permission_rows.iter().map(|row| row.get("name")).collect();
-    let response = row_to_role_with_permissions(&row, permissions);
+    let permissions = role_permissions(&transaction, id).await.map_err(db_error)?;
+    let response = row_to_role(&row, permissions);
 
     transaction.commit().await.map_err(db_error)?;
     Ok(Json(response))
@@ -503,12 +450,7 @@ pub async fn delete_role(
     user: AuthenticatedUser,
     id: i32,
 ) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
-    if !check_permission(pool, user.id, "manage_roles")
-        .await
-        .unwrap_or(false)
-    {
-        return Err(forbidden());
-    }
+    require_permission(pool, user.id, "manage_roles").await?;
 
     let mut client = get_client(pool).await?;
     let transaction = client.transaction().await.map_err(db_error)?;
@@ -573,14 +515,8 @@ pub async fn update_user_role(
     id: String,
     update: Json<UpdateUserRoleRequest>,
 ) -> Result<Json<User>, (Status, Json<serde_json::Value>)> {
-    let user_id = Uuid::parse_str(&id).map_err(|_| bad_request("Invalid user ID"))?;
-
-    if !check_permission(pool, user.id, "edit_user")
-        .await
-        .unwrap_or(false)
-    {
-        return Err(forbidden());
-    }
+    let user_id = parse_user_id(&id)?;
+    require_permission(pool, user.id, "edit_user").await?;
 
     if user_id == user.id {
         return Err(bad_request("Cannot change your own role"));
@@ -608,15 +544,7 @@ pub async fn update_user_role(
         return Err(not_found("User not found"));
     }
 
-    let row = client
-        .query_opt(
-            "SELECT u.id, u.username, u.password_hash, u.role_id, r.name as role_name,
-                    u.created_at, u.updated_at
-             FROM users u
-             JOIN roles r ON u.role_id = r.id
-             WHERE u.id = $1",
-            &[&user_id],
-        )
+    let row = find_user_by_id(&client, user_id)
         .await
         .map_err(db_error)?
         .ok_or_else(|| not_found("User not found after update"))?;
@@ -632,14 +560,8 @@ pub async fn update_user_password(
     id: String,
     update: Json<UpdateUserPasswordRequest>,
 ) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
-    let user_id = Uuid::parse_str(&id).map_err(|_| bad_request("Invalid user ID"))?;
-
-    if !check_permission(pool, user.id, "edit_user")
-        .await
-        .unwrap_or(false)
-    {
-        return Err(forbidden());
-    }
+    let user_id = parse_user_id(&id)?;
+    require_permission(pool, user.id, "edit_user").await?;
 
     if update.password.len() < 4 {
         return Err(bad_request("Password must be at least 4 characters"));
@@ -674,14 +596,8 @@ pub async fn delete_user(
     user: AuthenticatedUser,
     id: String,
 ) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
-    let user_id = Uuid::parse_str(&id).map_err(|_| bad_request("Invalid user ID"))?;
-
-    if !check_permission(pool, user.id, "delete_user")
-        .await
-        .unwrap_or(false)
-    {
-        return Err(forbidden());
-    }
+    let user_id = parse_user_id(&id)?;
+    require_permission(pool, user.id, "delete_user").await?;
 
     if user_id == user.id {
         return Err(bad_request("Cannot delete yourself"));

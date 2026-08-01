@@ -1,7 +1,6 @@
 use super::*;
 
 use lofty::picture::PictureType;
-use lofty::prelude::*;
 use lofty::probe::Probe;
 use lofty::tag::ItemKey;
 use std::path::Path;
@@ -187,22 +186,6 @@ async fn extract_cover_art(tag: Option<&lofty::tag::Tag>, relative_path: &str) -
     fs::write(&cover_path, picture.data()).await.is_ok()
 }
 
-// ── Permission helper ──
-
-pub(crate) async fn require_music_permission(
-    pool: &Pool,
-    user: &AuthenticatedUser,
-    permission: &str,
-) -> Result<(), (Status, Json<serde_json::Value>)> {
-    if !check_permission(pool, user.id, permission)
-        .await
-        .unwrap_or(false)
-    {
-        return Err(forbidden());
-    }
-    Ok(())
-}
-
 #[put("/music/songs/<id>/tags", data = "<req>")]
 pub(crate) async fn update_song_tags(
     pool: &State<Pool>,
@@ -210,7 +193,7 @@ pub(crate) async fn update_song_tags(
     id: &str,
     req: Json<UpdateTagsRequest>,
 ) -> Result<Json<SongResponse>, (Status, Json<serde_json::Value>)> {
-    require_music_permission(pool, &user, "music_edit_tags").await?;
+    require_permission(pool, user.id, "music_edit_tags").await?;
     let song_id = Uuid::parse_str(id).map_err(|_| not_found("Invalid song ID"))?;
     let client = get_client(pool).await?;
     let row = client.query_opt(
@@ -250,7 +233,7 @@ pub(crate) async fn scan_songs(
     pool: &State<Pool>,
     user: AuthenticatedUser,
 ) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
-    require_music_permission(pool, &user, "music_upload").await?;
+    require_permission(pool, user.id, "music_upload").await?;
     let client = get_client(pool).await?;
     let rows = client
         .query("SELECT file_path FROM songs ORDER BY file_path", &[])

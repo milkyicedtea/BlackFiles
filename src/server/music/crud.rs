@@ -30,6 +30,7 @@ pub(crate) fn row_to_song(row: &tokio_postgres::Row) -> SongResponse {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[get("/music/songs?<page>&<limit>&<search>&<artist>&<album>&<genre>")]
 pub(crate) async fn list_songs(
     pool: &State<Pool>,
@@ -41,9 +42,7 @@ pub(crate) async fn list_songs(
     album: Option<String>,
     genre: Option<String>,
 ) -> Result<Json<SongListResponse>, (Status, Json<serde_json::Value>)> {
-    let page = page.unwrap_or(1).max(1);
-    let limit = limit.unwrap_or(50).clamp(1, 200);
-    let offset = (page - 1) * limit;
+    let page = Page::new(page, limit);
     let client = get_client(pool).await?;
 
     // Build WHERE clause with direct SQL params.
@@ -91,8 +90,8 @@ pub(crate) async fn list_songs(
 
     let lim_p = idx;
     let off_p = idx + 1;
-    params.push(&limit);
-    params.push(&offset);
+    params.push(&page.limit);
+    params.push(&page.offset);
 
     let rows = client
         .query(
@@ -110,8 +109,8 @@ pub(crate) async fn list_songs(
     Ok(Json(SongListResponse {
         songs,
         total,
-        page,
-        limit,
+        page: page.number,
+        limit: page.limit,
     }))
 }
 
@@ -121,7 +120,7 @@ pub(crate) async fn delete_song(
     user: AuthenticatedUser,
     id: &str,
 ) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
-    require_music_permission(pool, &user, "music_delete").await?;
+    require_permission(pool, user.id, "music_delete").await?;
     let song_id = Uuid::parse_str(id).map_err(|_| not_found("Invalid song ID"))?;
     let client = get_client(pool).await?;
     let row = client

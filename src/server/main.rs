@@ -16,17 +16,17 @@ use rocket::fs::FileServer;
 use rocket::{Build, Rocket};
 
 use crate::auth::{
-    admin_revoke_api_key, login::check_auth, create_api_key, create_default_admin, create_role,
-    create_user, delete_role, delete_user, get_role, list_all_api_keys, list_my_api_keys,
-    list_permissions, list_roles, list_users, login::login, login::logout, login::me,
+    admin_revoke_api_key, create_api_key, create_default_admin, create_role, create_user,
+    delete_role, delete_user, get_role, list_all_api_keys, list_my_api_keys, list_permissions,
+    list_roles, list_users, login::check_auth, login::login, login::logout, login::me,
     login::refresh, move_role, revoke_api_key, update_role, update_user_password, update_user_role,
 };
 use crate::files::{
     create_folder, create_public_tus_upload, create_tus_upload, create_upload_link, delete_path,
     delete_upload_link, download::download, get_public_upload_link, head_public_tus_upload,
-    list_directory, list_root, list_tus_uploads, list_upload_links, patch_public_tus_upload,
-    patch_tus_upload, public_tus_options, rename_path, terminate_public_tus_upload,
-    terminate_tus_upload, tus_options, head_tus_upload
+    head_tus_upload, list_directory, list_root, list_tus_uploads, list_upload_links,
+    patch_public_tus_upload, patch_tus_upload, public_tus_options, rename_path,
+    terminate_public_tus_upload, terminate_tus_upload, tus_options,
 };
 use crate::frontend::frontend_fallback;
 use crate::music::{

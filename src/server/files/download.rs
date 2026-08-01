@@ -10,14 +10,9 @@ pub async fn download(
     user: AuthenticatedUser,
     path: PathBuf,
 ) -> Result<FileResponse, Status> {
-    let has_perm = check_permission(pool, user.id, "download_files")
-        .await
-        .unwrap_or(false);
-    if !has_perm {
-        return Err(Status::Forbidden);
-    }
+    require_file_permission(pool, user.id, "download_files").await?;
     let safe_path = sanitize_path(path).ok_or(Status::BadRequest)?;
-    let full_path = Path::new(STORAGE_ROOT).join(safe_path);
+    let full_path = Path::new(STORAGE_ROOT).join(&safe_path);
 
     let metadata = fs::metadata(&full_path)
         .await
@@ -26,16 +21,7 @@ pub async fn download(
         return Err(Status::NotFound);
     }
 
-    let canonical = fs::canonicalize(&full_path)
-        .await
-        .map_err(|_| Status::NotFound)?;
-    let canonical_root = fs::canonicalize(STORAGE_ROOT)
-        .await
-        .map_err(|_| Status::InternalServerError)?;
-
-    if !canonical.starts_with(&canonical_root) {
-        return Err(Status::Forbidden);
-    }
+    let canonical = canonical_path_status(STORAGE_ROOT, &safe_path).await?;
 
     if let Some(filename) = canonical.file_name()
         && filename.to_string_lossy().starts_with('.')

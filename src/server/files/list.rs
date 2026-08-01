@@ -1,4 +1,5 @@
-use crate::auth::guards::{AuthenticatedUser, check_permission};
+use super::helpers::require_file_permission;
+use crate::auth::AuthenticatedUser;
 use crate::models::PaginationParams;
 use crate::shared::{
     FileEntry, STORAGE_ROOT, filter_by_search_term, path_to_web_string, sanitize_path,
@@ -80,6 +81,23 @@ async fn read_dir_entries(safe_path: &Path) -> Result<Vec<FileEntry>, Status> {
     Ok(entries)
 }
 
+async fn list_entries(
+    pool: &Pool,
+    user: &AuthenticatedUser,
+    path: &Path,
+    pagination: &PaginationParams,
+) -> Result<Json<serde_json::Value>, Status> {
+    require_file_permission(pool, user.id, "list_files").await?;
+    let mut entries = read_dir_entries(path).await?;
+    filter_by_search_term(pagination, &mut entries);
+
+    let total = entries.len() as i64;
+    let limit = pagination.effective_limit() as usize;
+    let offset = pagination.effective_offset() as usize;
+    let data: Vec<FileEntry> = entries.into_iter().skip(offset).take(limit).collect();
+    Ok(Json(serde_json::json!({"data": data, "total": total})))
+}
+
 #[get("/list/<path..>?<pagination..>")]
 pub async fn list_directory(
     pool: &State<Pool>,
@@ -87,26 +105,8 @@ pub async fn list_directory(
     path: PathBuf,
     pagination: PaginationParams,
 ) -> Result<Json<serde_json::Value>, Status> {
-    let has_perm = check_permission(pool, user.id, "list_files")
-        .await
-        .unwrap_or(false);
-    if !has_perm {
-        return Err(Status::Forbidden);
-    }
-    let safe_path = sanitize_path(path.clone()).ok_or(Status::BadRequest)?;
-    let mut entries = read_dir_entries(&safe_path).await?;
-
-    // Filter by search term
-    filter_by_search_term(&pagination, &mut entries);
-
-    let total = entries.len() as i64;
-
-    // Apply pagination
-    let limit = pagination.effective_limit() as usize;
-    let offset = pagination.effective_offset() as usize;
-    let data: Vec<FileEntry> = entries.into_iter().skip(offset).take(limit).collect();
-
-    Ok(Json(serde_json::json!({"data": data, "total": total})))
+    let safe_path = sanitize_path(path).ok_or(Status::BadRequest)?;
+    list_entries(pool, &user, &safe_path, &pagination).await
 }
 
 #[get("/list?<pagination..>")]
@@ -115,23 +115,5 @@ pub async fn list_root(
     user: AuthenticatedUser,
     pagination: PaginationParams,
 ) -> Result<Json<serde_json::Value>, Status> {
-    let has_perm = check_permission(pool, user.id, "list_files")
-        .await
-        .unwrap_or(false);
-    if !has_perm {
-        return Err(Status::Forbidden);
-    }
-    let mut entries = read_dir_entries(Path::new("")).await?;
-
-    // Filter by search term
-    filter_by_search_term(&pagination, &mut entries);
-
-    let total = entries.len() as i64;
-
-    // Apply pagination
-    let limit = pagination.effective_limit() as usize;
-    let offset = pagination.effective_offset() as usize;
-    let data: Vec<FileEntry> = entries.into_iter().skip(offset).take(limit).collect();
-
-    Ok(Json(serde_json::json!({"data": data, "total": total})))
+    list_entries(pool, &user, Path::new(""), &pagination).await
 }

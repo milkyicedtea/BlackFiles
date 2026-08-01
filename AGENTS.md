@@ -23,45 +23,73 @@ Blackfiles is a self-hosted file storage and music library server. It has two ma
 
 ```
 src/
-  server/           ← Rust backend
-    lib.rs           ← Shared infrastructure crate (models, shared)
-    main.rs          ← Rocket launch, route registration
-    db.rs            ← PostgreSQL pool init, feature script runner
-    frontend.rs      ← SPA fallback handler
-    models.rs        ← Shared data types (User, Role, Claims, etc.) — lib crate
-    shared.rs        ← Constants (STORAGE_ROOT, MUSIC_ROOT), error helpers — lib crate
+  server/                 ← Rust backend
+    main.rs               ← Rocket launch and route registration
+    db.rs                 ← PostgreSQL pool init and feature script runner
+    frontend.rs           ← SPA fallback handler
+    models.rs             ← Shared data types (User, Role, Claims, etc.)
+    test.rs               ← Backend test module
 
-    auth/            ← Authentication subsystem
-      mod.rs         ← Login/logout, JWT, user/role CRUD
-      api_keys.rs    ← API key management (user + admin), ApiKeyUser guard
-      guards.rs      ← AuthenticatedUser request guard, check_permission
+    shared/               ← Cross-subsystem infrastructure
+      mod.rs              ← Module declarations and crate-local re-exports only
+      constants.rs        ← STORAGE_ROOT, MUSIC_ROOT, BUILD_ROOT
+      crypto.rs           ← Random-token and SHA-256 helpers
+      db.rs               ← Database connection and error helpers
+      encoding.rs         ← Shared encoding/decoding helpers
+      errors.rs           ← ApiError and HTTP error constructors
+      files.rs            ← Shared file response, path, and listing helpers
+      pagination.rs       ← Reusable page/limit/offset normalization
+      tus.rs              ← Shared TUS protocol types and upload workflow
 
-    files/           ← File storage subsystem
-      mod.rs         ← Download, delete, create folder, rename
-      list.rs        ← Directory listing
-      tus.rs         ← TUS resumable uploads
-      upload_links.rs ← One-time public upload links
+    auth/                 ← Authentication subsystem
+      mod.rs              ← Module declarations and crate-local re-exports
+      guards.rs           ← AuthenticatedUser guard and DB permission lookup
+      helpers.rs          ← Auth-local permission, row, role, and cookie helpers
+      jwt.rs              ← Password hashing and JWT/token helpers
+      login.rs            ← Login, logout, refresh, and current-user routes
+      crud.rs             ← User and role administration
+      api_keys.rs         ← User and admin API key management
 
-    music/           ← Music library subsystem
-      mod.rs         ← Tag scanner, song CRUD, personal library
-      upload.rs      ← TUS uploads for music (post-upload tag scanning)
+    files/                ← File storage subsystem
+      mod.rs              ← Module declarations and crate-local re-exports
+      helpers.rs          ← File-local permission and canonical-path helpers
+      list.rs             ← Directory listing
+      download.rs         ← File download
+      delete.rs           ← File and directory deletion
+      folder.rs           ← Folder creation
+      rename.rs           ← File and folder rename
+      tus.rs              ← File-storage routes over the shared TUS workflow
+      upload_links.rs     ← One-time public upload links
 
-    opensubsonic/    ← OpenSubsonic API
-      mod.rs         ← Response envelope, SubsonicUser/SubsonicQuery guards, shared helpers, system endpoints
-      browse.rs      ← Browsing endpoints (getMusicFolders → getGenres)
-      media.rs       ← Media & search endpoints (stream, download, getCoverArt, search, getRandomSongs)
-      annotations.rs ← Playlists, star/unstar, getStarred, scrobble, getNowPlaying
+    music/                ← Music library subsystem
+      mod.rs              ← Module declarations and crate-local re-exports
+      crud.rs             ← Global song library routes
+      library.rs          ← Personal library routes
+      tags.rs             ← Audio metadata scanning and editing
+      upload.rs           ← Music routes over shared TUS plus tag scanning
 
-  client/            ← React frontend (TypeScript)
-    routes/          ← File-based routing (TanStack Router)
-    hooks/           ← Auth, upload, directory, file operations
-    components/      ← UI components
-    types/           ← TypeScript type definitions
-dbinit/              ← Idempotent SQL migration scripts (run on startup in order)
-storage/             ← Runtime data
-  files/             ← General file storage root (STORAGE_ROOT)
-  music/             ← Music library root (MUSIC_ROOT)
-    .covers/         ← Extracted cover art images
+    opensubsonic/         ← OpenSubsonic API
+      mod.rs              ← Module declarations and crate-local re-exports
+      envelope.rs         ← OpenSubsonic response envelope
+      guards.rs           ← SubsonicUser and SubsonicQuery guards
+      shared.rs           ← OpenSubsonic-local IDs, ranges, and song helpers
+      system.rs           ← Ping, license, and extension endpoints
+      browse.rs           ← Browsing, album-list, and genre endpoints
+      media.rs            ← Streaming, downloads, cover art, and search
+      playlists.rs        ← Playlist endpoints
+      starred.rs          ← Star and unstar endpoints
+      scrobble_api.rs     ← Scrobbling and now-playing endpoints
+
+  client/                 ← React frontend (TypeScript)
+    routes/               ← File-based routing (TanStack Router)
+    hooks/                ← Auth, upload, directory, and file operations
+    components/           ← UI components
+    types/                ← TypeScript type definitions
+dbinit/                   ← Idempotent SQL migrations, applied in filename order
+storage/
+  files/                  ← General file storage root (STORAGE_ROOT)
+  music/                  ← Music library root (MUSIC_ROOT)
+    .covers/              ← Extracted cover art images
 ```
 
 ## Constants
@@ -126,7 +154,7 @@ Current migrations:
 ### Blackfiles Auth (JWT)
 - Login sets `access_token` (short-lived JWT cookie, `/` path) and `refresh_token` (HTTP-only, `/api/auth` path)
 - `AuthenticatedUser` request guard: reads JWT from cookie, validates, returns user
-- `check_permission(pool, user_id, permission)` — DB-backed permission check
+- `check_permission` is the low-level DB lookup; route code uses `has_permission` for optional checks or `require_permission` for enforcement
 
 ### OpenSubsonic Auth
 - `SubsonicUser` request guard supports:
@@ -138,16 +166,29 @@ Current migrations:
 ## Conventions
 
 ### Rust
-- Rocket route handlers return `Result<Json<T>, (Status, Json<serde_json::Value>)>` or `Result<TusResponse, ApiError>`
-- Error helpers in `shared.rs`: `bad_request`, `not_found`, `forbidden`, `conflict`, `server_error`, `db_error`
-- `get_client(pool)` acquires a DB connection from the pool
+- Rocket route handlers return `Result<Json<T>, ApiError>` or `Result<TusResponse, ApiError>` where practical
+- Cross-subsystem infrastructure belongs in `src/server/shared/`, split by concern and re-exported crate-locally from `shared/mod.rs`
+- HTTP error helpers and `ApiError` live in `shared/errors.rs`; database acquisition and error mapping live in `shared/db.rs`
+- Shared file/path behavior lives in `shared/files.rs`; shared upload protocol behavior lives in `shared/tus.rs`
+- Repeating logic used only by one subsystem belongs in that subsystem's `helpers.rs` or another focused local module
+- `get_client(pool)` acquires a database connection and maps pool failures to `ApiError`
 - Database scripts are embedded via `include_str!`
-- Use `pub(crate)` for shared internal APIs, `pub` only for truly public types
+- Use `pub(crate)` for shared internal APIs and `pub` only for truly public types
+- Keep `mod.rs` files limited to module declarations, imports, and re-exports; implementation belongs in focused files
 
 ### TypeScript
 - TanStack Router file-based routing under `src/client/routes/`
 - Path aliases: `@local/components`, `@local/hooks`, `@local/lib`, `@local/types`
 - Auth state via router context (root route's `beforeLoad`)
+
+### Duplication and Shared Code
+- Run `bun run duplicates:server`, `bun run duplicates:client`, or `bun run duplicates:all` after structural refactors
+- Server detection intentionally requires at least 10 duplicated lines and 100 duplicated tokens, filtering routine Rocket and serde boilerplate
+- Treat detector output as an inspection queue, not a mandate to abstract incidental structural similarity
+- Extract substantive cross-subsystem duplication into the appropriate `src/server/shared/` concern
+- Extract substantive subsystem-only duplication into a focused local helper
+- Start with the highest-impact clones, update every callsite, then rerun the relevant duplicate detector
+- Run `bun run everything` after duplicate refactors
 
 ## Key Dependencies
 
@@ -176,6 +217,7 @@ See `ROADMAP_MUSIC.md` for the music library implementation plan. Current status
 - [x] Phase 4 — OpenSubsonic Browsing
 - [x] Phase 5 — OpenSubsonic Media & Search
 - [x] Phase 6 — OpenSubsonic Playlists & Annotations
+- [x] Phase 6.5 — Refactor
 - [ ] Phase 7 — Blackfiles Music UI
 - [ ] Phase 8 — Polish & Tier 2/3 Endpoints
 
@@ -198,18 +240,34 @@ See `ROADMAP_MUSIC.md` for the music library implementation plan. Current status
 - Use `grep` (not `bash grep`/`rg`) for regex search.
 - Use `glob` (not `ls`/`find`) for file discovery.
 
+## Package Scripts
+
+- `bun run dev` — start the Vite frontend development server
+- `bun run build` — build the frontend with Vite
+- `bun run fmt` — apply Biome fixes and format Rust with `cargo fmt`
+- `bun run lint` — apply Biome fixes and run `cargo clippy`
+- `bun run typecheck` — type-check the frontend with TypeScript native preview
+- `bun run everything` — run formatting, linting, and frontend type-checking
+- `bun run duplicates:client` — scan frontend source for copy-paste duplication
+- `bun run duplicates:server` — scan Rust source, requiring 10 lines and 100 tokens per clone
+- `bun run duplicates:all` — run both duplicate detectors
+- `bun run loc:server` — count and rank Rust source lines by file
+
 ## Running
 
 ```bash
-# Start PostgreSQL (docker)
+# Start PostgreSQL (Docker)
 docker compose up -d db
 
-# Verify everything (format + lint + typecheck)
+# Verify formatting, linting, and frontend types
 bun run everything
+
+# Check duplication after structural changes
+bun run duplicates:all
 
 # Backend
 cargo run
 
-# Frontend dev server
+# Frontend development server
 bun run dev
 ```

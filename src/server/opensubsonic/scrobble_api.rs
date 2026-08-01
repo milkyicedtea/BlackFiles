@@ -42,13 +42,11 @@ pub(crate) async fn scrobble(
         Some(s) => s,
         None => return param_err("Required parameter 'id' is missing"),
     };
-    let song = match Uuid::parse_str(&id) {
-        Ok(u) => u,
-        Err(_) => return not_found_resp(),
+    let Ok(song) = Uuid::parse_str(&id) else {
+        return not_found_resp();
     };
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return db_err_resp(),
+    let Ok(client) = pool.get().await else {
+        return db_err_resp();
     };
     match in_personal_library(&client, user.id, song).await {
         Ok(true) => {}
@@ -83,9 +81,8 @@ pub(crate) async fn get_now_playing(
     pool: &State<Pool>,
     _user: SubsonicUser,
 ) -> Json<serde_json::Value> {
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return db_err_resp(),
+    let Ok(client) = pool.get().await else {
+        return db_err_resp();
     };
     let rows = match client
         .query(

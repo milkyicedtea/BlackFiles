@@ -41,7 +41,7 @@ impl<'r> FromRequest<'r> for SubsonicUser {
         if let Some(api_key) = query_param(request, "apiKey")
             && !api_key.is_empty()
         {
-            let key_hash = hash_api_key(&api_key);
+            let key_hash = sha256_hex(&api_key);
             let client = match pool.get().await {
                 Ok(c) => c,
                 Err(_) => return Outcome::Error(api_err(0, "Database error")),

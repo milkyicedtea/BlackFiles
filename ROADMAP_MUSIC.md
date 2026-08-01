@@ -325,6 +325,10 @@ The current settings pages move under `/admin/`. New personal settings pages are
 - [x] `star`/`unstar`, `getStarred`/`getStarred2`.
 - [x] `scrobble`, `getNowPlaying`.
 
+### Phase 6.5 — Refactor
+
+- [x] Refactor shared server infrastructure and substantive duplication.
+
 ### Phase 7 — Blackfiles Music UI & Settings Restructure
 
 - [ ] Restructure frontend routes: `/settings/*` → personal, `/admin/*` → admin.

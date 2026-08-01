@@ -45,6 +45,30 @@ impl<'r> FromRequest<'r> for RangeHeader {
     }
 }
 
+async fn binary_context(
+    pool: &Pool,
+    id: &str,
+) -> Result<(deadpool_postgres::Object, Uuid), SubsonicBinaryResponse> {
+    let song_id =
+        Uuid::parse_str(id).map_err(|_| SubsonicBinaryResponse::error(70, "Resource not found"))?;
+    let client = pool
+        .get()
+        .await
+        .map_err(|_| SubsonicBinaryResponse::error(0, "Database error"))?;
+    Ok((client, song_id))
+}
+
+async fn binary_user_song(
+    pool: &Pool,
+    user_id: Uuid,
+    id: &str,
+) -> Result<tokio_postgres::Row, SubsonicBinaryResponse> {
+    let (client, song_id) = binary_context(pool, id).await?;
+    get_user_song(&client, user_id, song_id)
+        .await
+        .map_err(|_| SubsonicBinaryResponse::error(70, "Resource not found"))
+}
+
 #[allow(non_snake_case)]
 #[allow(clippy::too_many_arguments)]
 #[get("/rest/stream?<id>&<_maxBitRate>&<_format>&<_timeOffset>&<_size>&<_estimateContentLength>")]
@@ -59,19 +83,9 @@ pub(crate) async fn stream(
     _size: Option<String>,
     _estimateContentLength: Option<bool>,
 ) -> SubsonicBinaryResponse {
-    let song_uuid = match Uuid::parse_str(&id) {
-        Ok(u) => u,
-        Err(_) => return SubsonicBinaryResponse::error(70, "Resource not found"),
-    };
-
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return SubsonicBinaryResponse::error(0, "Database error"),
-    };
-
-    let row = match get_user_song(&client, user.id, song_uuid).await {
-        Ok(r) => r,
-        Err(_) => return SubsonicBinaryResponse::error(70, "Resource not found"),
+    let row = match binary_user_song(pool, user.id, &id).await {
+        Ok(row) => row,
+        Err(response) => return response,
     };
 
     let file_path: String = row.get("file_path");
@@ -127,19 +141,9 @@ pub(crate) async fn subsonic_download(
     user: SubsonicUser,
     id: String,
 ) -> SubsonicBinaryResponse {
-    let song_uuid = match Uuid::parse_str(&id) {
-        Ok(u) => u,
-        Err(_) => return SubsonicBinaryResponse::error(70, "Resource not found"),
-    };
-
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return SubsonicBinaryResponse::error(0, "Database error"),
-    };
-
-    let row = match get_user_song(&client, user.id, song_uuid).await {
-        Ok(r) => r,
-        Err(_) => return SubsonicBinaryResponse::error(70, "Resource not found"),
+    let row = match binary_user_song(pool, user.id, &id).await {
+        Ok(row) => row,
+        Err(response) => return response,
     };
 
     let file_path: String = row.get("file_path");
@@ -180,14 +184,9 @@ pub(crate) async fn get_cover_art(
     id: String,
     _size: Option<i32>,
 ) -> SubsonicBinaryResponse {
-    let song_uuid = match Uuid::parse_str(&id) {
-        Ok(u) => u,
-        Err(_) => return SubsonicBinaryResponse::error(70, "Resource not found"),
-    };
-
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => return SubsonicBinaryResponse::error(0, "Database error"),
+    let (client, song_uuid) = match binary_context(pool, &id).await {
+        Ok(context) => context,
+        Err(response) => return response,
     };
 
     let row = match client
@@ -281,158 +280,118 @@ impl<'r> rocket::response::Responder<'r, 'static> for SubsonicBinaryResponse {
     }
 }
 
-#[allow(non_snake_case)]
-#[allow(clippy::too_many_arguments)]
-#[get(
-    "/rest/search2?<query>&<artistCount>&<artistOffset>&<albumCount>&<albumOffset>&<songCount>&<songOffset>&<_musicFolderId>"
-)]
-pub(crate) async fn search2(
-    pool: &State<Pool>,
-    user: SubsonicUser,
+#[derive(FromForm)]
+pub(crate) struct SearchQuery {
     query: String,
-    artistCount: Option<i32>,
-    artistOffset: Option<i32>,
-    albumCount: Option<i32>,
-    albumOffset: Option<i32>,
-    songCount: Option<i32>,
-    songOffset: Option<i32>,
-    _musicFolderId: Option<String>,
-) -> Json<serde_json::Value> {
-    search3(
-        pool,
-        user,
-        query,
-        artistCount,
-        artistOffset,
-        albumCount,
-        albumOffset,
-        songCount,
-        songOffset,
-        _musicFolderId,
-    )
-    .await
+    #[field(name = "artistCount")]
+    artist_count: Option<i32>,
+    #[field(name = "artistOffset")]
+    artist_offset: Option<i32>,
+    #[field(name = "albumCount")]
+    album_count: Option<i32>,
+    #[field(name = "albumOffset")]
+    album_offset: Option<i32>,
+    #[field(name = "songCount")]
+    song_count: Option<i32>,
+    #[field(name = "songOffset")]
+    song_offset: Option<i32>,
 }
 
-#[allow(non_snake_case)]
-#[allow(clippy::too_many_arguments)]
-#[get(
-    "/rest/search3?<query>&<artistCount>&<artistOffset>&<albumCount>&<albumOffset>&<songCount>&<songOffset>&<_musicFolderId>"
-)]
-pub(crate) async fn search3(
+async fn search(
     pool: &State<Pool>,
     user: SubsonicUser,
-    query: String,
-    artistCount: Option<i32>,
-    artistOffset: Option<i32>,
-    albumCount: Option<i32>,
-    albumOffset: Option<i32>,
-    songCount: Option<i32>,
-    songOffset: Option<i32>,
-    _musicFolderId: Option<String>,
+    query: SearchQuery,
 ) -> Json<serde_json::Value> {
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => {
-            return Json(
-                serde_json::to_value(SubsonicResponse::<EmptyResponse>::error(
-                    0,
-                    "Database error",
-                ))
-                .unwrap_or_default(),
-            );
-        }
+    let Ok(client) = pool.get().await else {
+        return db_err_resp();
     };
+    let artist_count = query.artist_count.unwrap_or(20).min(500) as i64;
+    let artist_offset = query.artist_offset.unwrap_or(0) as i64;
+    let album_count = query.album_count.unwrap_or(20).min(500) as i64;
+    let album_offset = query.album_offset.unwrap_or(0) as i64;
+    let song_count = query.song_count.unwrap_or(20).min(500) as i64;
+    let song_offset = query.song_offset.unwrap_or(0) as i64;
+    let pattern = format!("%{}%", query.query);
 
-    let art_count = artistCount.unwrap_or(20).min(500) as i64;
-    let art_skip = artistOffset.unwrap_or(0) as i64;
-    let alb_count = albumCount.unwrap_or(20).min(500) as i64;
-    let alb_skip = albumOffset.unwrap_or(0) as i64;
-    let sng_count = songCount.unwrap_or(20).min(500) as i64;
-    let sng_skip = songOffset.unwrap_or(0) as i64;
-
-    let pattern = format!("%{}%", query);
-
-    let artists = match client
+    let artists = client
         .query(
-            "SELECT DISTINCT s.artist FROM songs s JOIN user_songs us ON s.id = us.song_id \
+            "SELECT DISTINCT s.artist FROM songs s \
+             JOIN user_songs us ON s.id = us.song_id \
              WHERE us.user_id = $1 AND s.artist ILIKE $2 \
              ORDER BY s.artist OFFSET $3 LIMIT $4",
-            &[&user.id, &pattern, &art_skip, &art_count],
+            &[&user.id, &pattern, &artist_offset, &artist_count],
         )
         .await
-    {
-        Ok(rows) => Some(
+        .ok()
+        .map(|rows| {
             rows.iter()
-                .map(|r| {
-                    let name: String = r.get("artist");
+                .map(|row| {
+                    let name: String = row.get("artist");
                     ArtistRef {
                         id: artist_id(&name),
                         name,
                     }
                 })
-                .collect::<Vec<_>>(),
-        ),
-        Err(_) => None,
-    };
-
-    let albums = match client
+                .collect()
+        });
+    let albums = client
         .query(
-            "SELECT DISTINCT s.artist, s.album, s.year, s.genre, BOOL_OR(s.has_cover_art) AS has_cover \
+            "SELECT DISTINCT s.artist, s.album, s.year, s.genre, \
+                    BOOL_OR(s.has_cover_art) AS has_cover \
              FROM songs s JOIN user_songs us ON s.id = us.song_id \
              WHERE us.user_id = $1 AND s.album ILIKE $2 \
              GROUP BY s.artist, s.album, s.year, s.genre \
              ORDER BY s.artist, s.album OFFSET $3 LIMIT $4",
-            &[&user.id, &pattern, &alb_skip, &alb_count],
+            &[&user.id, &pattern, &album_offset, &album_count],
         )
         .await
-    {
-        Ok(rows) => Some(
+        .ok()
+        .map(|rows| {
             rows.iter()
-                .map(|r| {
-                    let art: String = r.get("artist");
-                    let alb: String = r.get("album");
-                    let has_cover: bool = r.get("has_cover");
-                    AlbumRef {
-                        id: album_id(&art, &alb),
-                        name: alb.clone(),
-                        artist: art.clone(),
-                        year: r.try_get("year").ok(),
-                        genre: r.try_get("genre").ok(),
-                        cover_art: if has_cover {
-                            Some(album_id(&art, &alb))
-                        } else {
-                            None
-                        },
-                        song_count: 0,
-                        duration: None,
-                    }
+                .map(|row| AlbumRef {
+                    info: AlbumInfo::from_row(row, "artist", "album"),
+                    song_count: 0,
+                    duration: None,
                 })
-                .collect::<Vec<_>>(),
-        ),
-        Err(_) => None,
-    };
-
-    let songs = match client
+                .collect()
+        });
+    let songs = client
         .query(
             "SELECT s.* FROM songs s JOIN user_songs us ON s.id = us.song_id \
-             WHERE us.user_id = $1 AND (s.title ILIKE $2 OR s.artist ILIKE $2 OR s.album ILIKE $2) \
+             WHERE us.user_id = $1 \
+               AND (s.title ILIKE $2 OR s.artist ILIKE $2 OR s.album ILIKE $2) \
              ORDER BY s.title OFFSET $3 LIMIT $4",
-            &[&user.id, &pattern, &sng_skip, &sng_count],
+            &[&user.id, &pattern, &song_offset, &song_count],
         )
         .await
-    {
-        Ok(rows) => Some(rows.iter().map(row_to_song_entry).collect::<Vec<_>>()),
-        Err(_) => None,
-    };
+        .ok()
+        .map(|rows| rows.iter().map(row_to_song_entry).collect());
 
-    let resp = SubsonicResponse::ok(SearchResponse {
+    ok_resp(SearchResponse {
         search_result: SearchResult {
             artists,
             albums,
             songs,
         },
-    });
-    Json(serde_json::to_value(&resp).unwrap_or_default())
+    })
+}
+
+#[get("/rest/search2?<query..>")]
+pub(crate) async fn search2(
+    pool: &State<Pool>,
+    user: SubsonicUser,
+    query: SearchQuery,
+) -> Json<serde_json::Value> {
+    search(pool, user, query).await
+}
+
+#[get("/rest/search3?<query..>")]
+pub(crate) async fn search3(
+    pool: &State<Pool>,
+    user: SubsonicUser,
+    query: SearchQuery,
+) -> Json<serde_json::Value> {
+    search(pool, user, query).await
 }
 
 #[allow(non_snake_case)]
@@ -446,121 +405,26 @@ pub(crate) async fn get_random_songs(
     toYear: Option<i32>,
     _musicFolderId: Option<String>,
 ) -> Json<serde_json::Value> {
-    let client = match pool.get().await {
-        Ok(c) => c,
-        Err(_) => {
-            return Json(
-                serde_json::to_value(SubsonicResponse::<EmptyResponse>::error(
-                    0,
-                    "Database error",
-                ))
-                .unwrap_or_default(),
-            );
-        }
+    let Ok(client) = pool.get().await else {
+        return db_err_resp();
     };
-
     let count = size.unwrap_or(10).min(500) as i64;
-
-    let rows_result = match (&genre, fromYear, toYear) {
-        (Some(g), Some(fy), Some(ty)) => {
-            client
-                .query(
-                    "SELECT s.* FROM songs s JOIN user_songs us ON s.id = us.song_id \
-                     WHERE us.user_id = $1 AND s.genre = $2 AND s.year BETWEEN $3 AND $4 \
-                     ORDER BY RANDOM() LIMIT $5",
-                    &[&user.id, g, &fy, &ty, &count],
-                )
-                .await
-        }
-        (Some(g), Some(fy), None) => {
-            client
-                .query(
-                    "SELECT s.* FROM songs s JOIN user_songs us ON s.id = us.song_id \
-                     WHERE us.user_id = $1 AND s.genre = $2 AND s.year >= $3 \
-                     ORDER BY RANDOM() LIMIT $4",
-                    &[&user.id, g, &fy, &count],
-                )
-                .await
-        }
-        (Some(g), None, Some(ty)) => {
-            client
-                .query(
-                    "SELECT s.* FROM songs s JOIN user_songs us ON s.id = us.song_id \
-                     WHERE us.user_id = $1 AND s.genre = $2 AND s.year <= $3 \
-                     ORDER BY RANDOM() LIMIT $4",
-                    &[&user.id, g, &ty, &count],
-                )
-                .await
-        }
-        (Some(g), None, None) => {
-            client
-                .query(
-                    "SELECT s.* FROM songs s JOIN user_songs us ON s.id = us.song_id \
-                     WHERE us.user_id = $1 AND s.genre = $2 \
-                     ORDER BY RANDOM() LIMIT $3",
-                    &[&user.id, g, &count],
-                )
-                .await
-        }
-        (None, Some(fy), Some(ty)) => {
-            client
-                .query(
-                    "SELECT s.* FROM songs s JOIN user_songs us ON s.id = us.song_id \
-                     WHERE us.user_id = $1 AND s.year BETWEEN $2 AND $3 \
-                     ORDER BY RANDOM() LIMIT $4",
-                    &[&user.id, &fy, &ty, &count],
-                )
-                .await
-        }
-        (None, Some(fy), None) => {
-            client
-                .query(
-                    "SELECT s.* FROM songs s JOIN user_songs us ON s.id = us.song_id \
-                     WHERE us.user_id = $1 AND s.year >= $2 \
-                     ORDER BY RANDOM() LIMIT $3",
-                    &[&user.id, &fy, &count],
-                )
-                .await
-        }
-        (None, None, Some(ty)) => {
-            client
-                .query(
-                    "SELECT s.* FROM songs s JOIN user_songs us ON s.id = us.song_id \
-                     WHERE us.user_id = $1 AND s.year <= $2 \
-                     ORDER BY RANDOM() LIMIT $3",
-                    &[&user.id, &ty, &count],
-                )
-                .await
-        }
-        (None, None, None) => {
-            client
-                .query(
-                    "SELECT s.* FROM songs s JOIN user_songs us ON s.id = us.song_id \
-                     WHERE us.user_id = $1 \
-                     ORDER BY RANDOM() LIMIT $2",
-                    &[&user.id, &count],
-                )
-                .await
-        }
+    let Ok(rows) = client
+        .query(
+            "SELECT s.* FROM songs s JOIN user_songs us ON s.id = us.song_id \
+             WHERE us.user_id = $1 \
+               AND ($2::TEXT IS NULL OR s.genre = $2) \
+               AND ($3::INTEGER IS NULL OR s.year >= $3) \
+               AND ($4::INTEGER IS NULL OR s.year <= $4) \
+             ORDER BY RANDOM() LIMIT $5",
+            &[&user.id, &genre, &fromYear, &toYear, &count],
+        )
+        .await
+    else {
+        return db_err_resp();
     };
-
-    let rows = match rows_result {
-        Ok(r) => r,
-        Err(_) => {
-            return Json(
-                serde_json::to_value(SubsonicResponse::<EmptyResponse>::error(
-                    0,
-                    "Database error",
-                ))
-                .unwrap_or_default(),
-            );
-        }
-    };
-
-    let songs: Vec<SongEntry> = rows.iter().map(row_to_song_entry).collect();
-
-    let resp = SubsonicResponse::ok(RandomSongsResponse {
+    let songs = rows.iter().map(row_to_song_entry).collect();
+    ok_resp(RandomSongsResponse {
         randomSongs: RandomSongsList { song: songs },
-    });
-    Json(serde_json::to_value(&resp).unwrap_or_default())
+    })
 }

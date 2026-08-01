@@ -8,10 +8,11 @@
     "dev": "bunx vite",
     "duplicates:all": "bun run duplicates:client && bun run duplicates:server",
     "duplicates:client": "bunx --bun jscpd src/client",
-    "duplicates:server": "bunx --bun jscpd src/server",
+    "duplicates:server": "bunx --bun jscpd src/server --min-tokens 100 --min-lines 10",
     "everything": "bun run fmt && bun run lint && bun run typecheck",
     "fmt": "biome check --write && cargo fmt",
     "lint": "biome check --write && cargo clippy",
+    "loc:server": "wc -l src/server/**/*.rs | sort -rn",
     "fmt:old": "eslint --fix && cargo fmt",
     "lint:old": "eslint . && cargo check",
     "typecheck": "bunx --bun @typescript/native-preview --noEmit"

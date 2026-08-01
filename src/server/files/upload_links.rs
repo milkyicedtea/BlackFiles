@@ -1,19 +1,16 @@
-use super::tus::cleanup_expired_uploads;
-use crate::auth::guards::{AuthenticatedUser, check_permission};
+use crate::auth::{AuthenticatedUser, has_permission, require_permission};
 use crate::models::{
     CreateUploadLinkRequest, CreatedUploadLink, PublicTusUpload, PublicUploadLinkStatus, UploadLink,
 };
 use crate::shared::{
-    bad_request, conflict, db_error, forbidden, get_client, not_found, path_to_web_string,
-    sanitize_path,
+    bad_request, cleanup_expired_uploads, conflict, db_error, forbidden, get_client, not_found,
+    path_to_web_string, random_hex, sanitize_path, sha256_hex,
 };
 use chrono::{DateTime, Utc};
 use deadpool_postgres::Pool;
-use rand::random;
 use rocket::State;
 use rocket::http::Status;
 use rocket::serde::json::Json;
-use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use uuid::Uuid;
 
@@ -25,16 +22,6 @@ struct ActorRole {
 struct LinkOwner {
     user_id: Uuid,
     role_position: i32,
-}
-
-fn generate_upload_token() -> String {
-    hex::encode(random::<[u8; 32]>())
-}
-
-pub(crate) fn hash_token(token: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    hex::encode(hasher.finalize())
 }
 
 fn normalize_target_path(target_path: &str) -> Result<String, (Status, Json<serde_json::Value>)> {
@@ -89,16 +76,11 @@ pub async fn create_upload_link(
     user: AuthenticatedUser,
     request: Json<CreateUploadLinkRequest>,
 ) -> Result<Json<CreatedUploadLink>, (Status, Json<serde_json::Value>)> {
-    if !check_permission(pool, user.id, "create_upload_links")
-        .await
-        .unwrap_or(false)
-    {
-        return Err(forbidden());
-    }
+    require_permission(pool, user.id, "create_upload_links").await?;
 
     let target_path = normalize_target_path(&request.target_path)?;
-    let token = generate_upload_token();
-    let token_hash = hash_token(&token);
+    let token = random_hex::<32>();
+    let token_hash = sha256_hex(&token);
     let client = get_client(pool).await?;
     let row = client
         .query_one(
@@ -130,18 +112,12 @@ pub async fn list_upload_links(
     pool: &State<Pool>,
     user: AuthenticatedUser,
 ) -> Result<Json<Vec<UploadLink>>, (Status, Json<serde_json::Value>)> {
-    let can_view_all = check_permission(pool, user.id, "view_upload_links")
-        .await
-        .unwrap_or(false);
-    let can_create = check_permission(pool, user.id, "create_upload_links")
-        .await
-        .unwrap_or(false);
+    let can_view_all = has_permission(pool, user.id, "view_upload_links").await;
+    let can_create = has_permission(pool, user.id, "create_upload_links").await;
     if !can_view_all && !can_create {
         return Err(forbidden());
     }
-    let can_delete_others = check_permission(pool, user.id, "delete_upload_links")
-        .await
-        .unwrap_or(false);
+    let can_delete_others = has_permission(pool, user.id, "delete_upload_links").await;
 
     let client = get_client(pool).await?;
     let actor = actor_role(&client, user.id).await?;
@@ -221,9 +197,7 @@ pub async fn delete_upload_link(
 
     if owner.user_id != user.id {
         let actor = actor_role(&client, user.id).await?;
-        let can_delete_others = check_permission(pool, user.id, "delete_upload_links")
-            .await
-            .unwrap_or(false);
+        let can_delete_others = has_permission(pool, user.id, "delete_upload_links").await;
         if !actor.is_admin && (!can_delete_others || actor.position >= owner.role_position) {
             return Err(forbidden());
         }
@@ -271,7 +245,7 @@ pub async fn get_public_upload_link(
 ) -> Result<Json<PublicUploadLinkStatus>, (Status, Json<serde_json::Value>)> {
     cleanup_expired_uploads(pool).await;
 
-    let token_hash = hash_token(token);
+    let token_hash = sha256_hex(token);
     let client = get_client(pool).await?;
     let row = client
         .query_opt(

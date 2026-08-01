@@ -1,14 +1,11 @@
 use deadpool_postgres::Pool;
-use rand::Rng;
 use rocket::State;
 use rocket::http::Status;
-use rocket::request::{FromRequest, Outcome, Request};
 use rocket::serde::{Deserialize, Serialize, json::Json};
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::guards::AuthenticatedUser;
-use crate::shared::{db_error, forbidden, get_client, not_found};
+use crate::shared::{db_error, forbidden, get_client, not_found, random_hex, sha256_hex};
 
 // ── Response types ──
 
@@ -59,53 +56,36 @@ pub struct CreateApiKeyRequest {
     pub label: Option<String>,
 }
 
-// ── Error helper ──
-
-fn api_err(status: Status, msg: &str) -> (Status, Json<serde_json::Value>) {
-    (status, Json(serde_json::json!({"error": msg})))
-}
-
-// ── Key crypto ──
-
-fn generate_api_key() -> String {
-    let mut bytes = [0u8; 24];
-    rand::thread_rng().fill(&mut bytes);
-    hex::encode(bytes)
-}
-
-pub(crate) fn hash_api_key(key: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(key.as_bytes());
-    hex::encode(hasher.finalize())
+fn key_timestamps(row: &tokio_postgres::Row) -> (Option<String>, String) {
+    let last_used_at = row
+        .try_get::<_, chrono::DateTime<chrono::Utc>>("last_used_at")
+        .ok()
+        .map(|date| date.to_rfc3339());
+    let created_at = row
+        .get::<_, chrono::DateTime<chrono::Utc>>("created_at")
+        .to_rfc3339();
+    (last_used_at, created_at)
 }
 
 fn row_to_key(row: &tokio_postgres::Row) -> ApiKeyResponse {
+    let (last_used_at, created_at) = key_timestamps(row);
     ApiKeyResponse {
         id: row.get("id"),
         label: row.get("label"),
-        last_used_at: row
-            .try_get::<_, chrono::DateTime<chrono::Utc>>("last_used_at")
-            .ok()
-            .map(|d| d.to_rfc3339()),
-        created_at: row
-            .get::<_, chrono::DateTime<chrono::Utc>>("created_at")
-            .to_rfc3339(),
+        last_used_at,
+        created_at,
     }
 }
 
 fn row_to_admin_key(row: &tokio_postgres::Row) -> AdminApiKeyResponse {
+    let (last_used_at, created_at) = key_timestamps(row);
     AdminApiKeyResponse {
         id: row.get("id"),
         user_id: row.get("user_id"),
         username: row.get("username"),
         label: row.get("label"),
-        last_used_at: row
-            .try_get::<_, chrono::DateTime<chrono::Utc>>("last_used_at")
-            .ok()
-            .map(|d| d.to_rfc3339()),
-        created_at: row
-            .get::<_, chrono::DateTime<chrono::Utc>>("created_at")
-            .to_rfc3339(),
+        last_used_at,
+        created_at,
     }
 }
 
@@ -133,8 +113,8 @@ pub(crate) async fn create_api_key(
 ) -> Result<Json<ApiKeyCreatedResponse>, (Status, Json<serde_json::Value>)> {
     let client = get_client(pool).await?;
     let (key, key_hash) = loop {
-        let key = generate_api_key();
-        let hash = hash_api_key(&key);
+        let key = random_hex::<24>();
+        let hash = sha256_hex(&key);
         if client
             .query_opt("SELECT 1 FROM api_keys WHERE key_hash = $1", &[&hash])
             .await
@@ -227,100 +207,4 @@ pub(crate) async fn admin_revoke_api_key(
         return Err(not_found("API key not found"));
     }
     Ok(Json(serde_json::json!({"message": "API key revoked"})))
-}
-
-// ── API Key Auth Guard ──
-
-#[derive(Debug, Clone)]
-pub struct ApiKeyUser {
-    pub id: Uuid,
-    pub username: String,
-    pub role: String,
-}
-
-#[rocket::async_trait]
-impl<'r> FromRequest<'r> for ApiKeyUser {
-    type Error = Json<serde_json::Value>;
-
-    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let api_key = request.uri().query().and_then(|q| {
-            q.split('&').find_map(|pair| {
-                let (k, v) = pair.as_str().split_once('=')?;
-                if k == "apiKey" {
-                    Some(url_decode(v))
-                } else {
-                    None
-                }
-            })
-        });
-
-        let api_key = match api_key {
-            Some(ref k) if !k.is_empty() => k.clone(),
-            _ => return Outcome::Error(api_err(Status::Unauthorized, "Missing apiKey parameter")),
-        };
-
-        let pool = match request.guard::<&State<Pool>>().await {
-            Outcome::Success(p) => p,
-            _ => {
-                return Outcome::Error(api_err(
-                    Status::InternalServerError,
-                    "Server configuration error",
-                ));
-            }
-        };
-
-        let key_hash = hash_api_key(&api_key);
-
-        let client = match pool.get().await {
-            Ok(c) => c,
-            Err(_) => {
-                return Outcome::Error(api_err(Status::InternalServerError, "Database error"));
-            }
-        };
-
-        let row = match client.query_opt(
-            "SELECT u.id, u.username, r.name as role_name FROM api_keys ak JOIN users u ON ak.user_id = u.id JOIN roles r ON u.role_id = r.id WHERE ak.key_hash = $1",
-            &[&key_hash],
-        ).await {
-            Ok(Some(r)) => r,
-            Ok(None) => return Outcome::Error(api_err(Status::Unauthorized, "Invalid API key")),
-            Err(_) => return Outcome::Error(api_err(Status::InternalServerError, "Database error")),
-        };
-
-        let id: Uuid = row.get("id");
-        let username: String = row.get("username");
-        let role: String = row.get("role_name");
-
-        if let Ok(c) = pool.get().await {
-            let _ = c
-                .execute(
-                    "UPDATE api_keys SET last_used_at = NOW() WHERE key_hash = $1",
-                    &[&key_hash],
-                )
-                .await;
-        }
-
-        Outcome::Success(ApiKeyUser { id, username, role })
-    }
-}
-
-fn url_decode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '%' => {
-                let hex: String = chars.by_ref().take(2).collect();
-                if let Ok(b) = u8::from_str_radix(&hex, 16) {
-                    out.push(b as char);
-                } else {
-                    out.push('%');
-                    out.push_str(&hex);
-                }
-            }
-            '+' => out.push(' '),
-            _ => out.push(c),
-        }
-    }
-    out
 }

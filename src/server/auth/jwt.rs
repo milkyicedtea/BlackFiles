@@ -7,8 +7,6 @@ use argon2::{
 };
 use chrono::{Duration, Utc};
 use jsonwebtoken::{EncodingKey, Header, encode};
-use rand::random;
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 const ROLE_POSITION_LOCK: i64 = 1_976_101;
@@ -72,12 +70,5 @@ pub(crate) fn generate_jwt(
 // Refresh token helpers
 
 pub(crate) fn generate_refresh_token() -> String {
-    let bytes: [u8; 32] = random();
-    hex::encode(bytes)
-}
-
-pub(crate) fn hash_token(token: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    hex::encode(hasher.finalize())
+    random_hex::<32>()
 }
