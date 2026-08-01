@@ -28,7 +28,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY Cargo.toml Cargo.lock ./
 COPY dbinit ./dbinit
 COPY src/server ./src/server
-RUN cargo build --release
+RUN cargo build --release --locked
 
 # Runtime stage
 FROM debian:13-slim
