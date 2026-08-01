@@ -11,6 +11,7 @@
     "duplicates:server": "bunx --bun jscpd src/server --min-tokens 100 --min-lines 10",
     "everything": "bun run fmt && bun run lint && bun run typecheck",
     "fmt": "biome check --write && cargo fmt",
+    "ignore": "bunx --bun can-i-ignore-scripts",
     "lint": "biome check --write && cargo clippy",
     "loc:server": "wc -l src/server/**/*.rs | sort -rn",
     "fmt:old": "eslint --fix && cargo fmt",

@@ -5,7 +5,8 @@ WORKDIR /app
 COPY package.json bun.lock index.html vite.config.ts tsconfig.json ./
 COPY public ./public
 COPY src/client ./src/client
-RUN bun install && bun run build
+# bun blocks dependency lifecycle scripts by default, but we can still explicitly declare to ignore them
+RUN bun install --frozen-lockfile --ignore-scripts && bun run build
 
 # Build stage with cargo-chef for dependency caching
 FROM rust:1-slim-trixie AS chef
@@ -32,11 +33,6 @@ RUN cargo build --release
 # Runtime stage
 FROM debian:13-slim
 WORKDIR /app
-
-# Install CA certificates for HTTPS
-RUN apt-get update && \
-  apt-get install -y ca-certificates && \
-  rm -rf /var/lib/apt/lists/*
 
 # Rust binary
 COPY --from=builder /app/target/release/blackfiles /app/blackfiles
