@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate rocket;
 
+mod api_keys;
 mod auth;
 mod db;
 mod files;
@@ -8,25 +9,43 @@ mod frontend;
 mod guards;
 mod list;
 mod models;
+mod music;
+mod music_upload;
 mod shared;
+mod subsonic;
+pub mod test;
 mod tus;
 mod upload_links;
-
-pub mod test;
 
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::fs::FileServer;
 use rocket::{Build, Rocket};
 
+use crate::api_keys::{
+    admin_revoke_api_key, create_api_key, list_all_api_keys, list_my_api_keys, revoke_api_key,
+};
 use crate::auth::{
     check_auth, create_default_admin, create_role, create_user, delete_role, delete_user, get_role,
     list_permissions, list_roles, list_users, login, logout, me, move_role, refresh, update_role,
     update_user_password, update_user_role,
 };
-use crate::files::{delete_path, download};
+use crate::files::{create_folder, delete_path, download, rename_path};
 use crate::frontend::frontend_fallback;
 use crate::list::{list_directory, list_root};
+use crate::music::{
+    add_to_library, delete_song, list_personal_library, list_songs, remove_from_library,
+    scan_songs, update_song_tags,
+};
+use crate::music_upload::{
+    create_music_upload, head_music_upload, music_tus_options, patch_music_upload,
+    terminate_music_upload,
+};
 use crate::shared::api_error;
+use crate::subsonic::{
+    get_album, get_album_list, get_album_list2, get_artist, get_artists, get_cover_art, get_genres,
+    get_indexes, get_license, get_music_directory, get_music_folders, get_open_subsonic_extensions,
+    get_random_songs, get_song, ping, search2, search3, stream, subsonic_download,
+};
 use crate::tus::{
     create_public_tus_upload, create_tus_upload, head_public_tus_upload, head_tus_upload,
     list_tus_uploads, patch_public_tus_upload, patch_tus_upload, public_tus_options,
@@ -38,6 +57,8 @@ use crate::upload_links::{
 
 fn prepare_dirs() {
     std::fs::create_dir_all(shared::STORAGE_ROOT).ok();
+    std::fs::create_dir_all(shared::MUSIC_ROOT).ok();
+    std::fs::create_dir_all("storage/music/.covers").ok();
     std::fs::create_dir_all(shared::BUILD_ROOT).ok();
 }
 
@@ -76,6 +97,8 @@ fn rocket() -> _ {
                 list_directory,
                 download,
                 delete_path,
+                create_folder,
+                rename_path,
                 tus_options,
                 list_tus_uploads,
                 create_tus_upload,
@@ -91,9 +114,50 @@ fn rocket() -> _ {
                 list_upload_links,
                 delete_upload_link,
                 get_public_upload_link,
+                list_songs,
+                delete_song,
+                update_song_tags,
+                scan_songs,
+                list_personal_library,
+                add_to_library,
+                remove_from_library,
+                music_tus_options,
+                create_music_upload,
+                head_music_upload,
+                patch_music_upload,
+                terminate_music_upload,
+                list_my_api_keys,
+                create_api_key,
+                revoke_api_key,
+                list_all_api_keys,
+                admin_revoke_api_key,
             ],
         )
         .register("/api", catchers![api_error])
+        .mount(
+            "/",
+            routes![
+                ping,
+                get_license,
+                get_open_subsonic_extensions,
+                get_music_folders,
+                get_indexes,
+                get_music_directory,
+                get_artists,
+                get_artist,
+                get_album,
+                get_song,
+                get_album_list,
+                get_album_list2,
+                get_genres,
+                stream,
+                subsonic_download,
+                get_cover_art,
+                search2,
+                search3,
+                get_random_songs
+            ],
+        )
         .mount("/", FileServer::from(shared::BUILD_ROOT))
         .mount("/", routes![frontend_fallback])
 }

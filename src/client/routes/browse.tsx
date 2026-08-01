@@ -7,13 +7,13 @@ import { useDirectory } from '@local/hooks/useDirectory'
 import { useFileOperations } from '@local/hooks/useFileOperations'
 import { formatDate, formatSize } from '@local/lib/format'
 import type { FileEntry } from '@local/types/auth'
-import { ActionIcon, Button, Group, Stack, Text, Tooltip } from '@mantine/core'
+import { ActionIcon, Button, Group, Stack, Text, TextInput, Tooltip } from '@mantine/core'
 import { modals } from '@mantine/modals'
-import { IconDownload, IconTrash, IconUpload } from '@tabler/icons-react'
+import { IconDownload, IconEdit, IconFolderPlus, IconTrash, IconUpload } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
 import type { DataTableColumn } from 'mantine-datatable'
 import { DataTable } from 'mantine-datatable'
-import { type ChangeEvent, useRef } from 'react'
+import { type ChangeEvent, type DragEvent, useCallback, useRef, useState } from 'react'
 
 interface BrowseSearch {
   path?: string
@@ -93,8 +93,19 @@ function BrowsePage() {
     setLimit,
   } = useDirectory()
 
-  const { deleteFile } = useFileOperations()
+  const { deleteFile, createFolder, renameEntry } = useFileOperations()
   const { addFiles } = useUploader()
+  const canRename = usePermission('rename_files')
+  const canCreateFolder = usePermission('create_folders')
+
+  const [editingPath, setEditingPath] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
+
+  const [creatingFolder, setCreatingFolder] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+
+  const [isDragOver, setIsDragOver] = useState(false)
+  const dragCounter = useRef(0)
 
   function goUp() {
     if (pathParts.length === 0) return
@@ -124,27 +135,109 @@ function BrowsePage() {
     })
   }
 
+  const startRename = useCallback((file: FileEntry) => {
+    setEditingPath(file.path)
+    setEditingName(file.name)
+  }, [])
+
+  const submitRename = useCallback(() => {
+    if (!editingPath) return
+    const trimmed = editingName.trim()
+    if (trimmed && trimmed !== editingPath.split('/').pop()) {
+      renameEntry(editingPath, trimmed)
+    }
+    setEditingPath(null)
+    setEditingName('')
+  }, [editingPath, editingName, renameEntry])
+
+  const cancelRename = useCallback(() => {
+    setEditingPath(null)
+    setEditingName('')
+  }, [])
+
+  const startCreateFolder = useCallback(() => {
+    setCreatingFolder(true)
+    setNewFolderName('')
+  }, [])
+
+  const submitCreateFolder = useCallback(() => {
+    const trimmed = newFolderName.trim()
+    if (trimmed) createFolder(currentPath, trimmed)
+    setCreatingFolder(false)
+    setNewFolderName('')
+  }, [newFolderName, currentPath, createFolder])
+
+  const handleDragEnter = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current++
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) setIsDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current--
+    if (dragCounter.current === 0) setIsDragOver(false)
+  }, [])
+
+  const handleDragOver = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const handleDrop = useCallback(
+    (e: DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsDragOver(false)
+      dragCounter.current = 0
+      if (!canUpload) return
+      const files = e.dataTransfer.files
+      if (files.length > 0) addFiles(files, currentPath)
+    },
+    [canUpload, addFiles, currentPath]
+  )
+
   const columns: Array<DataTableColumn<FileEntry>> = [
     {
       accessor: 'name',
       title: 'Name',
-      render: (file) => (
-        <Group gap="xs" wrap="nowrap">
-          <FileIcon fileName={file.name} isDirectory={file.is_dir} />
-          <Text
-            size="sm"
-            style={{
-              fontWeight: file.is_dir ? 500 : undefined,
-              maxWidth: 300,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {file.name}
-          </Text>
-        </Group>
-      ),
+      render: (file) => {
+        const isEditing = editingPath === file.path
+        return (
+          <Group gap="xs" wrap="nowrap">
+            <FileIcon fileName={file.name} isDirectory={file.is_dir} />
+            {isEditing ? (
+              <TextInput
+                size="xs"
+                value={editingName}
+                autoFocus
+                onChange={(e) => setEditingName(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitRename()
+                  if (e.key === 'Escape') cancelRename()
+                }}
+                onBlur={cancelRename}
+                styles={{ input: { minWidth: 200 } }}
+              />
+            ) : (
+              <Text
+                size="sm"
+                style={{
+                  fontWeight: file.is_dir ? 500 : undefined,
+                  maxWidth: 300,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {file.name}
+              </Text>
+            )}
+          </Group>
+        )
+      },
       sortable: true,
     },
     {
@@ -173,9 +266,23 @@ function BrowsePage() {
       accessor: 'actions',
       title: '',
       textAlign: 'center',
-      width: canDelete ? 120 : 60,
+      width: 160,
       render: (file) => (
         <Group justify="center" gap={4} wrap="nowrap">
+          {canRename && (
+            <Tooltip label="Rename">
+              <ActionIcon
+                variant="subtle"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  startRename(file)
+                }}
+              >
+                <IconEdit size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
           {!file.is_dir && (
             <Tooltip label="Download">
               <ActionIcon
@@ -211,7 +318,40 @@ function BrowsePage() {
   ]
 
   return (
-    <div>
+    // biome-ignore lint/a11y/noStaticElementInteractions: Drag-and-drop is pointer-only; Upload button provides accessible alternative
+    <div
+      onDragEnter={canUpload ? handleDragEnter : undefined}
+      onDragLeave={canUpload ? handleDragLeave : undefined}
+      onDragOver={canUpload ? handleDragOver : undefined}
+      onDrop={canUpload ? handleDrop : undefined}
+      style={{
+        position: 'relative',
+        outline: isDragOver ? '2px dashed var(--mantine-color-blue-5)' : undefined,
+        outlineOffset: 0,
+        borderRadius: 'var(--mantine-radius-sm)',
+      }}
+    >
+      {isDragOver && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'color-mix(in srgb, var(--mantine-color-blue-5) 10%, transparent)',
+            borderRadius: 'var(--mantine-radius-sm)',
+            backdropFilter: 'blur(10px)',
+            height: '100%',
+            zIndex: 10,
+            pointerEvents: 'none',
+          }}
+        >
+          <Text size="xl" fw={700} c="blue">
+            Drop files to upload
+          </Text>
+        </div>
+      )}
       <Stack gap="sm">
         <Group justify="space-between" align="flex-end">
           <BrowsePathBar
@@ -226,19 +366,52 @@ function BrowsePage() {
             onNavigateToDir={navigateToDir}
           />
 
-          {canUpload && (
-            <>
-              <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelect} />
-              <Button
-                leftSection={<IconUpload size={16} />}
-                variant="light"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                Upload
-              </Button>
-            </>
-          )}
+          <Group gap="xs">
+            {canCreateFolder &&
+              (creatingFolder ? (
+                <TextInput
+                  size="xs"
+                  placeholder="Folder name"
+                  value={newFolderName}
+                  autoFocus
+                  onChange={(e) => setNewFolderName(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitCreateFolder()
+                    if (e.key === 'Escape') {
+                      setCreatingFolder(false)
+                      setNewFolderName('')
+                    }
+                  }}
+                  onBlur={() => {
+                    setCreatingFolder(false)
+                    setNewFolderName('')
+                  }}
+                  styles={{ input: { width: 160 } }}
+                />
+              ) : (
+                <Button
+                  leftSection={<IconFolderPlus size={16} />}
+                  variant="light"
+                  size="sm"
+                  onClick={startCreateFolder}
+                >
+                  New Folder
+                </Button>
+              ))}
+            {canUpload && (
+              <>
+                <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileSelect} />
+                <Button
+                  leftSection={<IconUpload size={16} />}
+                  variant="light"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Upload
+                </Button>
+              </>
+            )}
+          </Group>
         </Group>
 
         <DataTable<FileEntry>

@@ -72,25 +72,25 @@ impl TusHeaders {
             .map_err(|_| bad_request(&format!("Invalid {name} header")))
     }
 
-    fn upload_length(&self) -> Result<u64, ApiError> {
+    pub(crate) fn upload_length(&self) -> Result<u64, ApiError> {
         self.required_u64(self.upload_length.as_ref(), "Upload-Length")
     }
 
-    fn upload_offset(&self) -> Result<u64, ApiError> {
+    pub(crate) fn upload_offset(&self) -> Result<u64, ApiError> {
         self.required_u64(self.upload_offset.as_ref(), "Upload-Offset")
     }
 
-    fn content_length(&self) -> Result<u64, ApiError> {
+    pub(crate) fn content_length(&self) -> Result<u64, ApiError> {
         self.required_u64(self.content_length.as_ref(), "Content-Length")
     }
 
-    fn metadata(&self) -> Result<&str, ApiError> {
+    pub(crate) fn metadata(&self) -> Result<&str, ApiError> {
         self.upload_metadata
             .as_deref()
             .ok_or_else(|| bad_request("Missing Upload-Metadata header"))
     }
 
-    fn is_offset_octet_stream(&self) -> bool {
+    pub(crate) fn is_offset_octet_stream(&self) -> bool {
         self.content_type
             .as_deref()
             .and_then(|value| value.split(';').next())
@@ -108,7 +108,7 @@ pub(crate) struct TusResponse {
 }
 
 impl TusResponse {
-    fn options() -> Self {
+    pub(crate) fn options() -> Self {
         Self {
             status: Status::NoContent,
             location: None,
@@ -119,7 +119,7 @@ impl TusResponse {
         }
     }
 
-    fn created(location: String) -> Self {
+    pub(crate) fn created(location: String) -> Self {
         Self {
             status: Status::Created,
             location: Some(location),
@@ -130,7 +130,7 @@ impl TusResponse {
         }
     }
 
-    fn head(offset: u64, length: u64) -> Self {
+    pub(crate) fn head(offset: u64, length: u64) -> Self {
         Self {
             status: Status::Ok,
             location: None,
@@ -141,7 +141,7 @@ impl TusResponse {
         }
     }
 
-    fn patched(offset: u64) -> Self {
+    pub(crate) fn patched(offset: u64) -> Self {
         Self {
             status: Status::NoContent,
             location: None,
@@ -152,7 +152,7 @@ impl TusResponse {
         }
     }
 
-    fn terminated() -> Self {
+    pub(crate) fn terminated() -> Self {
         Self {
             status: Status::NoContent,
             location: None,
@@ -194,8 +194,8 @@ impl<'r> Responder<'r, 'static> for TusResponse {
     }
 }
 
-fn temporary_path(id: Uuid) -> PathBuf {
-    Path::new(STORAGE_ROOT)
+pub(crate) fn temporary_path(storage_root: &str, id: Uuid) -> PathBuf {
+    Path::new(storage_root)
         .join(TEMP_DIRECTORY)
         .join(format!("{id}.part"))
 }
@@ -212,7 +212,10 @@ fn filename_from_metadata(metadata: &str) -> Result<PathBuf, ApiError> {
     sanitize_path(filename).ok_or_else(|| bad_request("Invalid filename"))
 }
 
-fn destination_from_metadata(metadata: &str) -> Result<(String, PathBuf), ApiError> {
+pub(crate) fn destination_from_metadata(
+    storage_root: &str,
+    metadata: &str,
+) -> Result<(String, PathBuf), ApiError> {
     let metadata = parse_metadata(metadata)?;
     let filename = metadata
         .get("filename")
@@ -237,7 +240,7 @@ fn destination_from_metadata(metadata: &str) -> Result<(String, PathBuf), ApiErr
 
     let relative_path = target_directory.join(filename);
     let target_path = path_to_web_string(&relative_path);
-    Ok((target_path, Path::new(STORAGE_ROOT).join(relative_path)))
+    Ok((target_path, Path::new(storage_root).join(relative_path)))
 }
 
 fn parse_metadata(value: &str) -> Result<std::collections::HashMap<String, String>, ApiError> {
@@ -299,7 +302,7 @@ pub(crate) async fn cleanup_expired_uploads(pool: &Pool) {
 
     for row in rows {
         let id: Uuid = row.get("id");
-        fs::remove_file(temporary_path(id)).await.ok();
+        fs::remove_file(temporary_path(STORAGE_ROOT, id)).await.ok();
     }
 }
 
@@ -311,7 +314,7 @@ fn as_u64(value: i64) -> Result<u64, ApiError> {
     u64::try_from(value).map_err(|_| server_error())
 }
 
-fn parse_upload_id(value: &str) -> Result<Uuid, ApiError> {
+pub(crate) fn parse_upload_id(value: &str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(value).map_err(|_| not_found("Upload not found"))
 }
 
@@ -364,7 +367,7 @@ pub(crate) async fn create_tus_upload(
     if length > MAX_UPLOAD_SIZE {
         return Err(bad_request("Upload exceeds the maximum size"));
     }
-    let (target_path, destination) = destination_from_metadata(headers.metadata()?)?;
+    let (target_path, destination) = destination_from_metadata(STORAGE_ROOT, headers.metadata()?)?;
 
     match fs::metadata(&destination).await {
         Ok(_) => return Err(conflict("A file with this name already exists")),
@@ -382,7 +385,7 @@ pub(crate) async fn create_tus_upload(
         .map_err(|_| server_error())?;
 
     let id = Uuid::new_v4();
-    let temporary = temporary_path(id);
+    let temporary = temporary_path(STORAGE_ROOT, id);
     OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -490,7 +493,7 @@ pub(crate) async fn patch_tus_upload(
         return Err(bad_request("Upload chunk exceeds the declared file size"));
     }
 
-    let temporary = temporary_path(id);
+    let temporary = temporary_path(STORAGE_ROOT, id);
     let metadata = fs::metadata(&temporary).await.map_err(|_| server_error())?;
     if metadata.len() != offset {
         eprintln!("Upload session {id} has an inconsistent temporary file offset");
@@ -527,7 +530,7 @@ pub(crate) async fn patch_tus_upload(
     transaction.commit().await.map_err(db_error)?;
 
     if next_offset == length {
-        finalize_upload(pool, id, user.id, &target_path).await?;
+        finalize_upload(pool, STORAGE_ROOT, id, user.id, &target_path).await?;
     }
 
     Ok(TusResponse::patched(next_offset))
@@ -535,12 +538,13 @@ pub(crate) async fn patch_tus_upload(
 
 async fn finalize_upload(
     pool: &Pool,
+    storage_root: &str,
     id: Uuid,
     user_id: Uuid,
     target_path: &str,
 ) -> Result<(), ApiError> {
-    let temporary = temporary_path(id);
-    let destination = Path::new(STORAGE_ROOT).join(target_path);
+    let temporary = temporary_path(storage_root, id);
+    let destination = Path::new(storage_root).join(target_path);
 
     match fs::hard_link(&temporary, &destination).await {
         Ok(()) => {
@@ -587,7 +591,7 @@ pub(crate) async fn terminate_tus_upload(
     let id = parse_upload_id(id)?;
     require_upload_permission(pool, &user).await?;
     let client = get_client(pool).await?;
-    let row = client
+    let _row = client
         .query_opt(
             "DELETE FROM upload_sessions WHERE id = $1 AND user_id = $2 RETURNING id",
             &[&id, &user.id],
@@ -595,8 +599,7 @@ pub(crate) async fn terminate_tus_upload(
         .await
         .map_err(db_error)?
         .ok_or_else(|| not_found("Upload not found"))?;
-    let id: Uuid = row.get("id");
-    fs::remove_file(temporary_path(id)).await.ok();
+    fs::remove_file(temporary_path(STORAGE_ROOT, id)).await.ok();
 
     Ok(TusResponse::terminated())
 }
@@ -655,7 +658,7 @@ pub(crate) async fn create_public_tus_upload(
         .map_err(|_| server_error())?;
 
     let id = Uuid::new_v4();
-    let temporary = temporary_path(id);
+    let temporary = temporary_path(STORAGE_ROOT, id);
     OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -766,8 +769,7 @@ pub(crate) async fn patch_public_tus_upload(
     if content_length > remaining {
         return Err(bad_request("Upload chunk exceeds the declared file size"));
     }
-
-    let temporary = temporary_path(id);
+    let temporary = temporary_path(STORAGE_ROOT, id);
     let metadata = fs::metadata(&temporary).await.map_err(|_| server_error())?;
     if metadata.len() != offset {
         eprintln!("Upload session {id} has an inconsistent temporary file offset");
@@ -816,7 +818,7 @@ async fn finalize_public_upload(
     link_id: Uuid,
     target_path: &str,
 ) -> Result<(), ApiError> {
-    let temporary = temporary_path(id);
+    let temporary = temporary_path(STORAGE_ROOT, id);
     let destination = Path::new(STORAGE_ROOT).join(target_path);
     match fs::hard_link(&temporary, &destination).await {
         Ok(()) => {
@@ -872,7 +874,7 @@ pub(crate) async fn terminate_public_tus_upload(
     let id = parse_upload_id(id)?;
     let token_hash = hash_token(token);
     let client = get_client(pool).await?;
-    let row = client
+    let _row = client
         .query_opt(
             "DELETE FROM upload_sessions s
              USING upload_links l
@@ -884,8 +886,7 @@ pub(crate) async fn terminate_public_tus_upload(
         .await
         .map_err(db_error)?
         .ok_or_else(|| not_found("Upload not found"))?;
-    let id: Uuid = row.get("id");
-    fs::remove_file(temporary_path(id)).await.ok();
+    fs::remove_file(temporary_path(STORAGE_ROOT, id)).await.ok();
 
     Ok(TusResponse::terminated())
 }

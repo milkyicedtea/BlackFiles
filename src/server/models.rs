@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use rocket::serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
 // User
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,6 +143,19 @@ pub struct CreateUploadLinkRequest {
     pub target_path: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct CreateFolderRequest {
+    pub parent_path: String,
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct RenameRequest {
+    pub path: String,
+    pub new_name: String,
+}
 #[derive(Debug, Clone, Serialize)]
 #[serde(crate = "rocket::serde")]
 pub struct UploadLink {

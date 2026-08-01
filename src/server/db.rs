@@ -23,6 +23,10 @@ const FEATURE_SCRIPTS: &[(&str, &str)] = &[
         "0005_public_upload_sessions.sql",
         include_str!("../../dbinit/0005_public_upload_sessions.sql"),
     ),
+    (
+        "0006_music_library.sql",
+        include_str!("../../dbinit/0006_music_library.sql"),
+    ),
 ];
 
 /// Initialize the PostgreSQL connection pool.

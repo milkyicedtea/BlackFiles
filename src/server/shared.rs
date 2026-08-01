@@ -10,7 +10,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use tokio::io::AsyncRead;
 
-pub const STORAGE_ROOT: &str = "storage";
+pub const STORAGE_ROOT: &str = "storage/files";
+pub const MUSIC_ROOT: &str = "storage/music";
 pub const BUILD_ROOT: &str = "dist";
 
 // Error response helpers
