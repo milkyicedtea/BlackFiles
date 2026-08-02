@@ -35,7 +35,8 @@ use crate::opensubsonic::{
     get_artists, get_bookmarks, get_cover_art, get_genres, get_indexes, get_license,
     get_music_directory, get_music_folders, get_now_playing, get_open_subsonic_extensions,
     get_playlist, get_playlists, get_random_songs, get_song, get_starred, get_starred2, ping,
-    scrobble, search2, search3, star, stream, subsonic_download, unstar, update_playlist,
+    scrobble, search2, search3, star, stream, subsonic_auth_error, subsonic_download, unstar,
+    update_playlist,
 };
 use crate::shared::api_error;
 use rocket::fairing::{Fairing, Info, Kind};
@@ -159,6 +160,7 @@ fn rocket() -> _ {
                 get_starred2,
                 scrobble,
                 get_now_playing,
+                subsonic_auth_error,
             ],
         )
         .mount("/", FileServer::from(crate::shared::BUILD_ROOT))

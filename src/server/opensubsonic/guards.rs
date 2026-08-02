@@ -1,13 +1,18 @@
 use super::*;
 
-// ── Error helper ──
+// ── Error forwarding ──
 
-pub(super) fn api_err(code: i32, msg: &str) -> (Status, Json<serde_json::Value>) {
-    let resp = SubsonicResponse::<EmptyResponse>::error(code, msg);
-    (
-        Status::Ok,
-        Json(serde_json::to_value(&resp).unwrap_or_default()),
-    )
+type AuthErrorSlot = std::sync::Mutex<Option<serde_json::Value>>;
+
+fn api_err<T>(request: &Request<'_>, code: i32, msg: &str) -> Outcome<T, ()> {
+    let response = SubsonicResponse::<EmptyResponse>::error(code, msg);
+    let body = serde_json::to_value(response).unwrap_or_default();
+    let mut slot = request
+        .local_cache(AuthErrorSlot::default)
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    *slot = Some(body);
+    Outcome::Forward(Status::Unauthorized)
 }
 
 // ── Subsonic User Guard ──
@@ -27,14 +32,42 @@ pub(super) fn query_param(request: &Request<'_>, key: &str) -> Option<String> {
     })
 }
 
+pub(crate) struct SubsonicAuthError(serde_json::Value);
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for SubsonicAuthError {
+    type Error = ();
+
+    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let error = request
+            .local_cache(AuthErrorSlot::default)
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+
+        match error {
+            Some(body) => Outcome::Success(SubsonicAuthError(body)),
+            None => Outcome::Forward(Status::NotFound),
+        }
+    }
+}
+
+#[get("/<_path..>", rank = 100)]
+pub(crate) fn subsonic_auth_error(
+    error: SubsonicAuthError,
+    _path: std::path::PathBuf,
+) -> Json<serde_json::Value> {
+    Json(error.0)
+}
+
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for SubsonicUser {
-    type Error = Json<serde_json::Value>;
+    type Error = ();
 
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let pool = match request.guard::<&State<Pool>>().await {
-            Outcome::Success(p) => p,
-            _ => return Outcome::Error(api_err(0, "Server configuration error")),
+            Outcome::Success(pool) => pool,
+            _ => return api_err(request, 0, "Server configuration error"),
         };
 
         // 1. apiKey auth
@@ -43,20 +76,31 @@ impl<'r> FromRequest<'r> for SubsonicUser {
         {
             let key_hash = sha256_hex(&api_key);
             let client = match pool.get().await {
-                Ok(c) => c,
-                Err(_) => return Outcome::Error(api_err(0, "Database error")),
+                Ok(client) => client,
+                Err(_) => return api_err(request, 0, "Database error"),
             };
-            match client.query_opt(
+            match client
+                .query_opt(
                     "SELECT u.id, u.username FROM api_keys ak JOIN users u ON ak.user_id=u.id WHERE ak.key_hash=$1",
                     &[&key_hash],
-                ).await {
-                    Ok(Some(row)) => {
-                        let _ = client.execute("UPDATE api_keys SET last_used_at=NOW() WHERE key_hash=$1", &[&key_hash]).await;
-                        return Outcome::Success(SubsonicUser { id: row.get("id"), username: row.get("username") });
-                    }
-                    Ok(None) => return Outcome::Error(api_err(44, "Invalid API key")),
-                    Err(_) => return Outcome::Error(api_err(0, "Database error")),
+                )
+                .await
+            {
+                Ok(Some(row)) => {
+                    let _ = client
+                        .execute(
+                            "UPDATE api_keys SET last_used_at=NOW() WHERE key_hash=$1",
+                            &[&key_hash],
+                        )
+                        .await;
+                    return Outcome::Success(SubsonicUser {
+                        id: row.get("id"),
+                        username: row.get("username"),
+                    });
                 }
+                Ok(None) => return api_err(request, 44, "Invalid API key"),
+                Err(_) => return api_err(request, 0, "Database error"),
+            }
         }
 
         // 2. Check conflicting auth
@@ -65,41 +109,43 @@ impl<'r> FromRequest<'r> for SubsonicUser {
         let has_t = query_param(request, "t").is_some();
         let has_s = query_param(request, "s").is_some();
         if (has_t || has_s) && (has_u || has_p) {
-            return Outcome::Error(api_err(
+            return api_err(
+                request,
                 43,
                 "Multiple conflicting authentication mechanisms",
-            ));
+            );
         }
 
         // 3. t+s (not supported with argon2)
         if has_t || has_s {
-            return Outcome::Error(api_err(
+            return api_err(
+                request,
                 41,
                 "Token authentication not supported. Use an API key.",
-            ));
+            );
         }
 
         // 4. u+p
         let username = match query_param(request, "u") {
-            Some(u) if !u.is_empty() => u,
-            _ => return Outcome::Error(api_err(10, "Required parameter 'u' is missing")),
+            Some(username) if !username.is_empty() => username,
+            _ => return api_err(request, 10, "Required parameter 'u' is missing"),
         };
         let password = match query_param(request, "p") {
-            Some(p) if !p.is_empty() => p,
-            _ => return Outcome::Error(api_err(10, "Required parameter 'p' is missing")),
+            Some(password) if !password.is_empty() => password,
+            _ => return api_err(request, 10, "Required parameter 'p' is missing"),
         };
         let password = if let Some(hex) = password.strip_prefix("enc:") {
             match hex::decode(hex) {
-                Ok(b) => String::from_utf8_lossy(&b).to_string(),
-                Err(_) => return Outcome::Error(api_err(0, "Invalid hex-encoded password")),
+                Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
+                Err(_) => return api_err(request, 0, "Invalid hex-encoded password"),
             }
         } else {
             password
         };
 
         let client = match pool.get().await {
-            Ok(c) => c,
-            Err(_) => return Outcome::Error(api_err(0, "Database error")),
+            Ok(client) => client,
+            Err(_) => return api_err(request, 0, "Database error"),
         };
         let row = match client
             .query_opt(
@@ -108,21 +154,22 @@ impl<'r> FromRequest<'r> for SubsonicUser {
             )
             .await
         {
-            Ok(Some(r)) => r,
-            Ok(None) => return Outcome::Error(api_err(40, "Wrong username or password")),
-            Err(_) => return Outcome::Error(api_err(0, "Database error")),
+            Ok(Some(row)) => row,
+            Ok(None) => return api_err(request, 40, "Wrong username or password"),
+            Err(_) => return api_err(request, 0, "Database error"),
         };
         let password_hash: String = row.get("password_hash");
         let parsed = match argon2::PasswordHash::new(&password_hash) {
-            Ok(h) => h,
-            Err(_) => return Outcome::Error(api_err(0, "Invalid password hash")),
+            Ok(hash) => hash,
+            Err(_) => return api_err(request, 0, "Invalid password hash"),
         };
         if argon2::Argon2::default()
             .verify_password(password.as_bytes(), &parsed)
             .is_err()
         {
-            return Outcome::Error(api_err(40, "Wrong username or password"));
+            return api_err(request, 40, "Wrong username or password");
         }
+
         Outcome::Success(SubsonicUser {
             id: row.get("id"),
             username: row.get("username"),
@@ -172,5 +219,57 @@ impl<'r> FromRequest<'r> for SubsonicQuery {
             }
         }
         Outcome::Success(SubsonicQuery { pairs })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rocket::local::blocking::Client;
+
+    struct WrongCredentials;
+
+    #[rocket::async_trait]
+    impl<'r> FromRequest<'r> for WrongCredentials {
+        type Error = ();
+
+        async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+            api_err(request, 40, "Wrong username or password")
+        }
+    }
+
+    #[get("/protected")]
+    fn protected(_credentials: WrongCredentials) -> &'static str {
+        "unreachable"
+    }
+
+    fn test_client() -> Client {
+        let rocket = rocket::build().mount("/rest", routes![protected, subsonic_auth_error]);
+        Client::tracked(rocket).expect("test Rocket should launch")
+    }
+
+    #[test]
+    fn authentication_failure_returns_open_subsonic_error_with_http_200() {
+        let client = test_client();
+        let response = client.get("/rest/protected").dispatch();
+
+        assert_eq!(response.status(), Status::Ok);
+        let body = response
+            .into_json::<serde_json::Value>()
+            .expect("response should be JSON");
+        assert_eq!(body["subsonic-response"]["status"], "failed");
+        assert_eq!(body["subsonic-response"]["error"]["code"], 40);
+        assert_eq!(
+            body["subsonic-response"]["error"]["message"],
+            "Wrong username or password"
+        );
+    }
+
+    #[test]
+    fn authentication_fallback_does_not_capture_unknown_routes() {
+        let client = test_client();
+        let response = client.get("/rest/unknown").dispatch();
+
+        assert_eq!(response.status(), Status::NotFound);
     }
 }
