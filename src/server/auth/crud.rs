@@ -46,7 +46,7 @@ async fn query_page<'a>(
     client.query(sql, &params).await
 }
 
-/// POST /api/users — Create a new user (admin only)
+/// POST /api/users - Create a new user (admin only)
 #[post("/users", data = "<create>")]
 pub async fn create_user(
     pool: &State<Pool>,
@@ -115,7 +115,7 @@ pub async fn create_user(
     Ok(Json(LoginResponse { user: new_user }))
 }
 
-/// GET /api/users — List all users (admin only)
+/// GET /api/users - List all users (admin only)
 #[get("/users?<pagination..>")]
 pub async fn list_users(
     pool: &State<Pool>,
@@ -183,7 +183,7 @@ pub async fn list_users(
     Ok(Json(serde_json::json!({"data": users, "total": total})))
 }
 
-/// GET /api/roles — List all roles with their permissions
+/// GET /api/roles - List all roles with their permissions
 #[get("/roles?<pagination..>")]
 pub async fn list_roles(
     pool: &State<Pool>,
@@ -250,7 +250,7 @@ pub async fn list_roles(
     Ok(Json(serde_json::json!({"data": roles, "total": total})))
 }
 
-/// GET /api/roles/<id> — Get a single role with permissions
+/// GET /api/roles/<id> - Get a single role with permissions
 #[get("/roles/<id>")]
 pub async fn get_role(
     pool: &State<Pool>,
@@ -274,7 +274,7 @@ pub async fn get_role(
     Ok(Json(row_to_role(&row, permissions)))
 }
 
-/// POST /api/roles — Create a new role at the final position
+/// POST /api/roles - Create a new role at the final position
 #[post("/roles", data = "<create>")]
 pub async fn create_role(
     pool: &State<Pool>,
@@ -322,7 +322,7 @@ pub async fn create_role(
     Ok(Json(response))
 }
 
-/// PUT /api/roles/<id> — Update a role without changing its position
+/// PUT /api/roles/<id> - Update a role without changing its position
 #[put("/roles/<id>", data = "<update>")]
 pub async fn update_role(
     pool: &State<Pool>,
@@ -365,7 +365,7 @@ pub async fn update_role(
     Ok(Json(response))
 }
 
-/// POST /api/roles/<id>/move — Exchange a role with its adjacent position
+/// POST /api/roles/<id>/move - Exchange a role with its adjacent position
 #[post("/roles/<id>/move", data = "<move_request>")]
 pub async fn move_role(
     pool: &State<Pool>,
@@ -443,7 +443,7 @@ pub async fn move_role(
     Ok(Json(response))
 }
 
-/// DELETE /api/roles/<id> — Delete a role and close the position gap
+/// DELETE /api/roles/<id> - Delete a role and close the position gap
 #[delete("/roles/<id>")]
 pub async fn delete_role(
     pool: &State<Pool>,
@@ -507,7 +507,7 @@ pub async fn delete_role(
     Ok(Json(serde_json::json!({"success": true})))
 }
 
-/// PUT /api/users/<id>/role — Update user role
+/// PUT /api/users/<id>/role - Update user role
 #[put("/users/<id>/role", data = "<update>")]
 pub async fn update_user_role(
     pool: &State<Pool>,
@@ -552,7 +552,7 @@ pub async fn update_user_role(
     Ok(Json(row_to_user(&row)))
 }
 
-/// PUT /api/users/<id>/password — Update user password
+/// PUT /api/users/<id>/password - Update user password
 #[put("/users/<id>/password", data = "<update>")]
 pub async fn update_user_password(
     pool: &State<Pool>,
@@ -591,7 +591,7 @@ pub async fn update_user_password(
     Ok(Json(serde_json::json!({"success": true})))
 }
 
-/// DELETE /api/users/<id> — Delete a user
+/// DELETE /api/users/<id> - Delete a user
 #[delete("/users/<id>")]
 pub async fn delete_user(
     pool: &State<Pool>,
@@ -629,7 +629,7 @@ pub async fn delete_user(
     Ok(Json(serde_json::json!({"success": true})))
 }
 
-/// GET /api/permissions — List all permissions
+/// GET /api/permissions - List all permissions
 #[get("/permissions")]
 pub async fn list_permissions(
     pool: &State<Pool>,

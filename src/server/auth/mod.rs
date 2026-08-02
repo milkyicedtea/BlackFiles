@@ -14,7 +14,7 @@ pub(crate) mod helpers;
 pub(crate) mod jwt;
 pub(crate) mod login;
 
-// Re-exports for parent (main.rs) — explicit for login (function/module name collision).
+// Re-exports for parent (main.rs) - explicit for login (function/module name collision).
 // Re-exports for parent (main.rs)
 pub(crate) use {api_keys::*, crud::*, guards::*, helpers::*, jwt::*};
-// login is re-exported via its module path — see main.rs.
+// login is re-exported via its module path - see main.rs.

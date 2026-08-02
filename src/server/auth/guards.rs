@@ -116,7 +116,7 @@ pub async fn check_permission(
         .await
         .map_err(|e| format!("DB pool error: {e}"))?;
 
-    // First check if user is admin — they have all permissions
+    // First check if user is admin - they have all permissions
     let role_row = client
         .query_one(
             "SELECT r.name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = $1",

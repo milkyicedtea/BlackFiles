@@ -18,7 +18,7 @@ pub(crate) mod rename;
 pub(crate) mod tus;
 pub(crate) mod upload_links;
 
-// Re-exports for parent (main.rs) — explicit for modules with name collisions.
+// Re-exports for parent (main.rs) - explicit for modules with name collisions.
 // Re-exports for parent (main.rs)
 pub(crate) use {delete::*, folder::*, helpers::*, list::*, rename::*, tus::*, upload_links::*};
-// download is re-exported via its module path — see main.rs.
+// download is re-exported via its module path - see main.rs.

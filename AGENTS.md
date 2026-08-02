@@ -1,11 +1,11 @@
-# Blackfiles — Agent Guide
+# Blackfiles - Agent Guide
 
 ## Overview
 
 Blackfiles is a self-hosted file storage and music library server. It has two main subsystems:
 
-- **File storage** — general-purpose file upload/download/browse with role-based permissions
-- **Music library** — audio file management with an OpenSubsonic API for external clients
+- **File storage** - general-purpose file upload/download/browse with role-based permissions
+- **Music library** - audio file management with an OpenSubsonic API for external clients
 
 ## Stack
 
@@ -73,6 +73,7 @@ src/
       envelope.rs         ← OpenSubsonic response envelope
       guards.rs           ← SubsonicUser and SubsonicQuery guards
       shared.rs           ← OpenSubsonic-local IDs, ranges, and song helpers
+      bookmarks.rs        ← Bookmark synchronization compatibility endpoint
       system.rs           ← Ping, license, and extension endpoints
       browse.rs           ← Browsing, album-list, and genre endpoints
       media.rs            ← Streaming, downloads, cover art, and search
@@ -81,10 +82,22 @@ src/
       scrobble_api.rs     ← Scrobbling and now-playing endpoints
 
   client/                 ← React frontend (TypeScript)
-    routes/               ← File-based routing (TanStack Router)
-    hooks/                ← Auth, upload, directory, and file operations
-    components/           ← UI components
-    types/                ← TypeScript type definitions
+    main.tsx              ← React application bootstrap
+    queryClient.ts        ← Shared TanStack Query client
+    theme.ts              ← Mantine theme configuration
+    routeTree.gen.ts      ← Generated TanStack Router route tree
+    routes/               ← File-based routing
+      admin/              ← User, role, and global API-key administration
+      settings/           ← Personal settings and API-key management
+      browse.tsx          ← General file browser
+      music.tsx           ← Global and personal music library UI
+      upload-links.tsx    ← Upload-link management
+      upload.$token.tsx   ← Public upload-link page
+    hooks/                ← API, query, auth, upload, directory, and music hooks
+    components/           ← Shared file, administration, upload, and music UI
+    lib/                  ← Formatting and music-selection helpers
+    types/                ← TypeScript API and domain types
+    assets/               ← Frontend static assets
 dbinit/                   ← Idempotent SQL migrations, applied in filename order
 storage/
   files/                  ← General file storage root (STORAGE_ROOT)
@@ -94,60 +107,60 @@ storage/
 
 ## Constants
 
-- `STORAGE_ROOT = "storage/files"` — general file storage
-- `MUSIC_ROOT = "storage/music"` — music library storage
-- `BUILD_ROOT = "dist"` — frontend build output
+- `STORAGE_ROOT = "storage/files"` - general file storage
+- `MUSIC_ROOT = "storage/music"` - music library storage
+- `BUILD_ROOT = "dist"` - frontend build output
 
 ## Database Migrations
 
 Scripts in `dbinit/` are applied idempotently in lexicographic order on startup via `DatabaseFeatures` fairing. All use `CREATE TABLE IF NOT EXISTS` / `INSERT ... ON CONFLICT DO NOTHING`.
 
 Current migrations:
-- `0000_init.sql` — users, roles, permissions, sessions
-- `0001_dense_role_positions.sql` — role ordering function
-- `0002_core_seed.sql` — default roles, permissions
-- `0003_upload_links.sql` — one-time upload links
-- `0004_upload_sessions.sql` — TUS upload sessions
-- `0005_public_upload_sessions.sql` — public TUS support
-- `0006_music_library.sql` — songs, user_songs, cover_art, api_keys, playlists, starred, scrobbles
-- `0007_starred_artist.sql` — relax starred CHECK to allow artist-only stars + unique index
+- `0000_init.sql` - users, roles, permissions, sessions
+- `0001_dense_role_positions.sql` - role ordering function
+- `0002_core_seed.sql` - default roles, permissions
+- `0003_upload_links.sql` - one-time upload links
+- `0004_upload_sessions.sql` - TUS upload sessions
+- `0005_public_upload_sessions.sql` - public TUS support
+- `0006_music_library.sql` - songs, user_songs, cover_art, api_keys, playlists, starred, scrobbles
+- `0007_starred_artist.sql` - relax starred CHECK to allow artist-only stars + unique index
 
 ## API Route Structure
 
 ### File Storage (`/api/`)
-- `GET/POST /api/auth/*` — authentication
-- `GET/POST/PUT/DELETE /api/users/*` — user management
-- `GET/POST/PUT/DELETE /api/roles/*` — role management
-- `GET /api/list/*` — directory listing
-- `GET /api/files/*` — file download
-- `DELETE /api/files/*` — file/directory deletion
-- `POST /api/folders` — create folder
-- `PUT /api/rename` — rename file/folder
+- `GET/POST /api/auth/*` - authentication
+- `GET/POST/PUT/DELETE /api/users/*` - user management
+- `GET/POST/PUT/DELETE /api/roles/*` - role management
+- `GET /api/list/*` - directory listing
+- `GET /api/files/*` - file download
+- `DELETE /api/files/*` - file/directory deletion
+- `POST /api/folders` - create folder
+- `PUT /api/rename` - rename file/folder
 - TUS endpoints at `/api/uploads/*` and `/api/public/upload-links/*`
-- `GET/POST/DELETE /api/upload-links` — upload link management
+- `GET/POST/DELETE /api/upload-links` - upload link management
 
 ### Music (`/api/music/`)
-- `GET/POST /api/music/songs` — global library
-- `DELETE /api/music/songs/<id>` — delete song
-- `PUT /api/music/songs/<id>/tags` — edit tags
-- `POST /api/music/scan` — re-scan file tags
-- `GET /api/music/library` — personal library
-- `POST/DELETE /api/music/library/<song_id>` — add/remove from personal
+- `GET/POST /api/music/songs` - global library
+- `DELETE /api/music/songs/<id>` - delete song
+- `PUT /api/music/songs/<id>/tags` - edit tags
+- `POST /api/music/scan` - re-scan file tags
+- `GET /api/music/library` - personal library
+- `POST/DELETE /api/music/library/<song_id>` - add/remove from personal
 - TUS endpoints at `/api/music/uploads/*`
-- `GET/POST/DELETE /api/music/api-keys` — personal API key management
-- `GET/DELETE /api/admin/api-keys` — admin API key management
+- `GET/POST/DELETE /api/music/api-keys` - personal API key management
+- `GET/DELETE /api/admin/api-keys` - admin API key management
 
 ### OpenSubsonic (`/rest/`)
-- `GET /rest/ping` — health check
-- `GET /rest/getLicense` — license
-- `GET /rest/getOpenSubsonicExtensions` — capabilities
-- `GET /rest/getMusicFolders`, `getIndexes`, `getMusicDirectory`, `getArtists`, `getArtist`, `getAlbum`, `getSong` — browsing
-- `GET /rest/getAlbumList`/`getAlbumList2`, `getGenres` — lists & genres
-- `GET /rest/stream`, `download`, `getCoverArt` — media & art
-- `GET /rest/search2`/`search3`, `getRandomSongs` — search & random
-- `GET /rest/getPlaylists`, `getPlaylist`, `createPlaylist`, `updatePlaylist`, `deletePlaylist` — playlists
-- `GET /rest/star`, `unstar`, `getStarred`, `getStarred2` — starred
-- `GET /rest/scrobble`, `getNowPlaying` — scrobbling
+- `GET /rest/ping` - health check
+- `GET /rest/getLicense` - license
+- `GET /rest/getOpenSubsonicExtensions` - capabilities
+- `GET /rest/getMusicFolders`, `getIndexes`, `getMusicDirectory`, `getArtists`, `getArtist`, `getAlbum`, `getSong` - browsing
+- `GET /rest/getAlbumList`/`getAlbumList2`, `getGenres` - lists & genres
+- `GET /rest/stream`, `download`, `getCoverArt` - media & art
+- `GET /rest/search2`/`search3`, `getRandomSongs` - search & random
+- `GET /rest/getPlaylists`, `getPlaylist`, `createPlaylist`, `updatePlaylist`, `deletePlaylist` - playlists
+- `GET /rest/star`, `unstar`, `getStarred`, `getStarred2` - starred
+- `GET /rest/scrobble`, `getNowPlaying` - scrobbling
 
 ## Auth Architecture
 
@@ -158,9 +171,9 @@ Current migrations:
 
 ### OpenSubsonic Auth
 - `SubsonicUser` request guard supports:
-  - `apiKey` (recommended) — SHA-256 hashed, stored in `api_keys` table
-  - `u`+`p` — argon2 password verification
-  - `t`+`s` — token+salt: NOT supported (argon2 is one-way); returns error 41
+  - `apiKey` (recommended) - SHA-256 hashed, stored in `api_keys` table
+  - `u`+`p` - argon2 password verification
+  - `t`+`s` - token+salt: NOT supported (argon2 is one-way); returns error 41
 - All errors returned as `subsonic-response` envelopes with proper error codes (40=wrong password, 41=token not supported, 43=conflicting auth, 44=invalid API key)
 
 ## Conventions
@@ -182,7 +195,7 @@ Current migrations:
 - Auth state via router context (root route's `beforeLoad`)
 
 ### Duplication and Shared Code
-- Run `bun run duplicates:server`, `bun run duplicates:client`, or `bun run duplicates:all` after structural refactors
+- Run `bun run duplicates:server`, `bun run duplicates:client`, or `bun run duplicates` after structural refactors
 - Server detection intentionally requires at least 10 duplicated lines and 100 duplicated tokens, filtering routine Rocket and serde boilerplate
 - Treat detector output as an inspection queue, not a mandate to abstract incidental structural similarity
 - Extract substantive cross-subsystem duplication into the appropriate `src/server/shared/` concern
@@ -193,33 +206,33 @@ Current migrations:
 ## Key Dependencies
 
 ### Rust
-- `rocket` 0.5.1 — web framework
-- `deadpool-postgres` + `tokio-postgres` — async PostgreSQL
-- `argon2` — password hashing (NOT reversible; can't support Subsonic `t`+`s` auth)
-- `jsonwebtoken` — JWT
-- `lofty` 0.24 — audio metadata (ID3, Vorbis, MP4 tags)
-- `sha2` — SHA-256 for API key hashing
-- `uuid` — UUID generation
+- `rocket` 0.5.1 - web framework
+- `deadpool-postgres` + `tokio-postgres` - async PostgreSQL
+- `argon2` - password hashing (NOT reversible; can't support Subsonic `t`+`s` auth)
+- `jsonwebtoken` - JWT
+- `lofty` 0.24 - audio metadata (ID3, Vorbis, MP4 tags)
+- `sha2` - SHA-256 for API key hashing
+- `uuid` - UUID generation
 
 ### Frontend
-- `@mantine/core` — UI components
-- `@tanstack/react-router` — routing
-- `mantine-datatable` — data tables
-- `@tabler/icons-react` — icons
+- `@mantine/core` - UI components
+- `@tanstack/react-router` - routing
+- `mantine-datatable` - data tables
+- `@tabler/icons-react` - icons
 
 ## Roadmap
 See `ROADMAP_MUSIC.md` for the music library implementation plan. Current status:
 
-- [x] Phase 0 — Foundation (DB schema, storage roots, migrations)
-- [x] Phase 1 — Upload & Tag Scanning
-- [x] Phase 2 — API Keys
-- [x] Phase 3 — OpenSubsonic Scaffolding
-- [x] Phase 4 — OpenSubsonic Browsing
-- [x] Phase 5 — OpenSubsonic Media & Search
-- [x] Phase 6 — OpenSubsonic Playlists & Annotations
-- [x] Phase 6.5 — Refactor
-- [x] Phase 7 — Blackfiles Music UI
-- [ ] Phase 8 — Polish & Tier 2/3 Endpoints
+- [x] Phase 0 - Foundation (DB schema, storage roots, migrations)
+- [x] Phase 1 - Upload & Tag Scanning
+- [x] Phase 2 - API Keys
+- [x] Phase 3 - OpenSubsonic Scaffolding
+- [x] Phase 4 - OpenSubsonic Browsing
+- [x] Phase 5 - OpenSubsonic Media & Search
+- [x] Phase 6 - OpenSubsonic Playlists & Annotations
+- [x] Phase 6.5 - Refactor
+- [x] Phase 7 - Blackfiles Music UI
+- [ ] Phase 8 - Polish & Tier 2/3 Endpoints
 
 ## Agent Rules
 
@@ -234,7 +247,7 @@ See `ROADMAP_MUSIC.md` for the music library implementation plan. Current status
 
 ### Code Intelligence
 - **MANDATORY**: Use `lsp` for cross-file operations (renames, references, definitions, code actions) whenever a language server is available.
-- Prefer `lsp rename` over text-based renames — text tools miss shadowed imports, re-exports, and cross-file callsites.
+- Prefer `lsp rename` over text-based renames - text tools miss shadowed imports, re-exports, and cross-file callsites.
 
 ### Search
 - Use `grep` (not `bash grep`/`rg`) for regex search.
@@ -242,16 +255,21 @@ See `ROADMAP_MUSIC.md` for the music library implementation plan. Current status
 
 ## Package Scripts
 
-- `bun run dev` — start the Vite frontend development server
-- `bun run build` — build the frontend with Vite
-- `bun run fmt` — apply Biome fixes and format Rust with `cargo fmt`
-- `bun run lint` — apply Biome fixes and run `cargo clippy`
-- `bun run typecheck` — type-check the frontend with TypeScript native preview
-- `bun run everything` — run formatting, linting, and frontend type-checking
-- `bun run duplicates:client` — scan frontend source for copy-paste duplication
-- `bun run duplicates:server` — scan Rust source, requiring 10 lines and 100 tokens per clone
-- `bun run duplicates:all` — run both duplicate detectors
-- `bun run loc:server` — count and rank Rust source lines by file
+- `bun run build` - build the frontend with Vite
+- `bun run dev` - start the Vite frontend development server
+- `bun run duplicates` - run both duplicate detectors
+- `bun run duplicates:client` - scan frontend source for copy-paste duplication
+- `bun run duplicates:server` - scan Rust source, requiring 10 lines and 100 tokens per clone
+- `bun run everything` - run formatting, linting, and frontend type-checking
+- `bun run fmt` - apply Biome fixes and format Rust with `cargo fmt`
+- `bun run ignore` - audit dependency install scripts with `can-i-ignore-scripts`
+- `bun run lint` - apply Biome fixes and run `cargo clippy`
+- `bun run loc` - count and rank both client and server source lines
+- `bun run loc:client` - count and rank TypeScript source lines
+- `bun run loc:server` - count and rank Rust source lines
+- `bun run fmt:old` - run the legacy ESLint fixer and format Rust
+- `bun run lint:old` - run the legacy ESLint checks and `cargo check`
+- `bun run typecheck` - type-check the frontend with TypeScript native preview
 
 ## Running
 
@@ -263,7 +281,7 @@ docker compose up -d db
 bun run everything
 
 # Check duplication after structural changes
-bun run duplicates:all
+bun run duplicates
 
 # Backend
 cargo run

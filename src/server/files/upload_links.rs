@@ -69,7 +69,7 @@ fn row_to_upload_link(row: &tokio_postgres::Row, can_delete: bool) -> UploadLink
     }
 }
 
-/// POST /api/upload-links — Create a one-time upload link for a destination directory.
+/// POST /api/upload-links - Create a one-time upload link for a destination directory.
 #[post("/upload-links", data = "<request>")]
 pub async fn create_upload_link(
     pool: &State<Pool>,
@@ -106,7 +106,7 @@ pub async fn create_upload_link(
     }))
 }
 
-/// GET /api/upload-links — List links. Creators can see their own; view permission sees all.
+/// GET /api/upload-links - List links. Creators can see their own; view permission sees all.
 #[get("/upload-links")]
 pub async fn list_upload_links(
     pool: &State<Pool>,
@@ -167,7 +167,7 @@ pub async fn list_upload_links(
     Ok(Json(links))
 }
 
-/// DELETE /api/upload-links/<id> — Delete own link, or link created by lower role with permission.
+/// DELETE /api/upload-links/<id> - Delete own link, or link created by lower role with permission.
 #[delete("/upload-links/<id>")]
 pub async fn delete_upload_link(
     pool: &State<Pool>,
@@ -237,7 +237,7 @@ pub async fn delete_upload_link(
     Ok(Json(serde_json::json!({"success": true})))
 }
 
-/// GET /api/public/upload-links/<token> — Validate a one-time upload link and resume state.
+/// GET /api/public/upload-links/<token> - Validate a one-time upload link and resume state.
 #[get("/public/upload-links/<token>")]
 pub async fn get_public_upload_link(
     pool: &State<Pool>,

@@ -33,7 +33,7 @@ cp template.env .env
 Set strong values before exposing the service:
 
 - `POSTGRES_PASSWORD`
-- `JWT_SECRET` — a random value of at least 32 characters
+- `JWT_SECRET` - a random value of at least 32 characters
 - `DEFAULT_ADMIN_PASSWORD`
 
 `template.env` is configured for the Compose service names and exposes the application on port `4000`.

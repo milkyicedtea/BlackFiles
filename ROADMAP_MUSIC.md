@@ -2,7 +2,7 @@
 
 ## Overview
 
-A music library system separate from general file storage. Backed by a full OpenSubsonic API implementation so external clients (DSub, Symfonium, Tempo, etc.) can browse and stream. Blackfiles itself provides no playback — only library management (upload, tag editing, delete) and the bridge between global and personal libraries.
+A music library system separate from general file storage. Backed by a full OpenSubsonic API implementation so external clients (DSub, Symfonium, Tempo, etc.) can browse and stream. Blackfiles itself provides no playback - only library management (upload, tag editing, delete) and the bridge between global and personal libraries.
 
 ## Library Model
 
@@ -12,7 +12,7 @@ A music library system separate from general file storage. Backed by a full Open
 | **Personal** | Per-user  | Blackfiles UI + OpenSubsonic clients |
 
 - Users upload to the global library (single source of truth; duplicates are easier to spot).
-- Users "add" songs from global to their personal library (DB reference — no file copy).
+- Users "add" songs from global to their personal library (DB reference - no file copy).
 - External clients see only the authenticated user's personal library via OpenSubsonic.
 - Deleting from personal = removing the reference. Deleting from global = removing the file + cascading all personal references.
 
@@ -136,7 +136,7 @@ CREATE TABLE scrobbles (
 | `music_manage_api_keys` | Music | Create/revoke own OpenSubsonic API keys |
 | `music_manage_all_api_keys` | Music | Admin: list/revoke any user's API keys |
 
-`music_add_to_library` (adding from global to personal) is granted to all authenticated users — no separate permission needed.
+`music_add_to_library` (adding from global to personal) is granted to all authenticated users - no separate permission needed.
 
 ## Auth Bridge: Blackfiles → OpenSubsonic
 
@@ -173,14 +173,14 @@ CREATE TABLE scrobbles (
 | `GET`    | `/api/music/api-keys`         | List user's own API keys                                                              |
 | `POST`   | `/api/music/api-keys`         | Generate new API key                                                                  |
 | `DELETE` | `/api/music/api-keys/<id>`    | Revoke an API key                                                                     |
-| `GET`    | `/api/admin/api-keys`         | Admin: list all users' API keys (label, user, created, last used — never the raw key) |
+| `GET`    | `/api/admin/api-keys`         | Admin: list all users' API keys (label, user, created, last used - never the raw key) |
 | `DELETE` | `/api/admin/api-keys/<id>`    | Admin: revoke any user's API key                                                      |
 
 ### OpenSubsonic API (`/rest/`)
 
 All under `/rest/` with mandatory params `u`/`p` or `t`/`s` or `apiKey`, plus `v`, `c`, `f`. Returns `subsonic-response` envelope.
 
-#### Phase A — Essential (client won't work without these)
+#### Phase A - Essential (client won't work without these)
 
 | Endpoint                         | Notes                                                                   |
 |----------------------------------|-------------------------------------------------------------------------|
@@ -210,7 +210,7 @@ All under `/rest/` with mandatory params `u`/`p` or `t`/`s` or `apiKey`, plus `v
 | `scrobble`                       | Record play (with optional `submission` flag)                           |
 | `getStarred` / `getStarred2`     | List starred items                                                      |
 
-#### Phase B — Important for UX
+#### Phase B - Important for UX
 
 | Endpoint                               | Notes                                                   |
 |----------------------------------------|---------------------------------------------------------|
@@ -221,9 +221,9 @@ All under `/rest/` with mandatory params `u`/`p` or `t`/`s` or `apiKey`, plus `v
 | `getSongsByGenre`                      | Filter songs by genre                                   |
 | `getNowPlaying`                        | Currently playing (track from scrobbles)                |
 | `getAvatar`                            | User avatar (can return 404)                            |
-| `getUser` / `getUsers`                 | User management — read-only mapping to Blackfiles users |
+| `getUser` / `getUsers`                 | User management - read-only mapping to Blackfiles users |
 
-#### Phase C — Stub responses (return empty/unsupported)
+#### Phase C - Stub responses (return empty/unsupported)
 
 `getVideos`, `getVideoInfo`, `getCaptions`, `hls`, `getShares`, `createShare`, `updateShare`, `deleteShare`, `getPodcasts`, `getNewestPodcasts`, `refreshPodcasts`, `createPodcastChannel`, `deletePodcastChannel`, `deletePodcastEpisode`, `downloadPodcastEpisode`, `jukeboxControl`, `getInternetRadioStations`, `createInternetRadioStation`, `updateInternetRadioStation`, `deleteInternetRadioStation`, `getChatMessages`, `addChatMessage`, `createUser`, `updateUser`, `deleteUser`, `changePassword`, `getBookmarks`, `createBookmark`, `deleteBookmark`, `getPlayQueue`, `savePlayQueue`, `getScanStatus`, `startScan`
 
@@ -254,7 +254,7 @@ The current settings pages move under `/admin/`. New personal settings pages are
 ```
 /                     ← existing (dashboard/redirect)
 /browse               ← existing (file browser, scoped to storage/files/)
-/music                ← new (music library — global + personal)
+/music                ← new (music library - global + personal)
 /login                ← existing
 /upload/:token        ← existing
 /upload-links         ← existing
@@ -277,7 +277,7 @@ The current settings pages move under `/admin/`. New personal settings pages are
 
 ## Implementation Phases
 
-### Phase 0 — Foundation
+### Phase 0 - Foundation
 
 - [x] Move `STORAGE_ROOT` from `storage/` to `storage/files/` (migrate existing files).
 - [x] Add `MUSIC_ROOT = "storage/music/"` constant.
@@ -285,7 +285,7 @@ The current settings pages move under `/admin/`. New personal settings pages are
 - [x] Seed new permissions (`music_upload`, `music_delete`, `music_edit_tags`, `music_manage_api_keys`, `music_manage_all_api_keys`).
 - [x] Add `id3` crate to `Cargo.toml`.
 
-### Phase 1 — Upload & Tag Scanning
+### Phase 1 - Upload & Tag Scanning
 
 - [x] TUS upload handler for `storage/music/` (`/api/music/uploads`).
 - [x] Post-upload tag scanner: `lofty` → `songs` row + cover art extraction.
@@ -293,26 +293,26 @@ The current settings pages move under `/admin/`. New personal settings pages are
 - [x] `POST /api/music/scan` for re-scanning existing files.
 - [x] Personal library: `GET /api/music/library`, `POST/DELETE /api/music/library/<song_id>`.
 
-### Phase 2 — API Keys
+### Phase 2 - API Keys
 
 - [x] `GET/POST/DELETE /api/music/api-keys` endpoints (user manages own keys).
 - [x] `GET/DELETE /api/admin/api-keys` endpoints (admin manages all keys).
 - [x] API key auth guard (`ApiKeyUser`) for `/rest/` OpenSubsonic endpoints.
 
-### Phase 3 — OpenSubsonic Scaffolding
+### Phase 3 - OpenSubsonic Scaffolding
 
 - [x] `/rest/` router (separate from `/api/`).
 - [x] `subsonic-response` envelope (JSON via `f` param).
 - [x] Auth middleware: `SubsonicUser` guard supports `apiKey`, `u`+`p`; `t`+`s` rejected (argon2 incompatibility).
 - [x] `ping`, `getLicense`, `getOpenSubsonicExtensions` endpoints.
 
-### Phase 4 — OpenSubsonic Browsing
+### Phase 4 - OpenSubsonic Browsing
 
 - [x] `getMusicFolders`, `getIndexes`, `getMusicDirectory`.
 - [x] `getArtists`, `getArtist`, `getAlbum`, `getSong`.
 - [x] `getAlbumList`/`getAlbumList2`, `getGenres`.
 
-### Phase 5 — OpenSubsonic Media & Search
+### Phase 5 - OpenSubsonic Media & Search
 
 - [x] `stream` (with HTTP Range support).
 - [x] `download`.
@@ -320,16 +320,16 @@ The current settings pages move under `/admin/`. New personal settings pages are
 - [x] `search2`/`search3`.
 - [x] `getRandomSongs`.
 
-### Phase 6 — OpenSubsonic Playlists & Annotations
+### Phase 6 - OpenSubsonic Playlists & Annotations
 - [x] `getPlaylists`, `getPlaylist`, `createPlaylist`, `updatePlaylist`, `deletePlaylist`.
 - [x] `star`/`unstar`, `getStarred`/`getStarred2`.
 - [x] `scrobble`, `getNowPlaying`.
 
-### Phase 6.5 — Refactor
+### Phase 6.5 - Refactor
 
 - [x] Refactor shared server infrastructure and substantive duplication.
 
-### Phase 7 — Blackfiles Music UI & Settings Restructure
+### Phase 7 - Blackfiles Music UI & Settings Restructure
 
 - [x] Restructure frontend routes: `/settings/*` → personal, `/admin/*` → admin.
 - [x] Migrate `/settings/users` → `/admin/users`, `/settings/roles` → `/admin/roles`.
@@ -343,7 +343,7 @@ The current settings pages move under `/admin/`. New personal settings pages are
 - [x] Tag editor modal: inline edit of title/artist/album/genre/year/track.
 - [x] Delete confirmation with cascade warning.
 
-### Phase 8 — Polish & Tier 2/3 Endpoints
+### Phase 8 - Polish & Tier 2/3 Endpoints
 
 - [ ] Remaining OpenSubsonic browsing/info endpoints.
 - [ ] Stub responses for unsupported features (podcasts, jukebox, etc.).
@@ -352,7 +352,7 @@ The current settings pages move under `/admin/`. New personal settings pages are
 
 ## Open Questions
 
-1. **Flat vs hierarchical file layout?** `storage/music/{artist}/{album}/{track}.ext` is human-browsable. Flat UUID eliminates path collisions from weird artist names. The DB handles lookup either way. Recommendation: hierarchical — easier to debug.
+1. **Flat vs hierarchical file layout?** `storage/music/{artist}/{album}/{track}.ext` is human-browsable. Flat UUID eliminates path collisions from weird artist names. The DB handles lookup either way. Recommendation: hierarchical - easier to debug.
 
 2. **Transcoding?** OpenSubsonic `stream` accepts `format=mp3&maxBitRate=128`. Needs ffmpeg. Skip for MVP, add later.
 

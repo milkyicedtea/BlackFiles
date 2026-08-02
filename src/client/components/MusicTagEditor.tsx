@@ -44,7 +44,7 @@ export function MusicTagEditor({ song, opened, saving, onClose, onSave }: MusicT
   })
 
   return (
-    <Modal opened={opened} onClose={onClose} title={`Edit tags — ${song.title}`} size="lg">
+    <Modal opened={opened} onClose={onClose} title={`Edit tags - ${song.title}`} size="lg">
       <form
         onSubmit={form.onSubmit(async (values) => {
           await onSave({

@@ -60,7 +60,7 @@ function UsersPage() {
     total,
   } = useUsers()
 
-  // TypeScript narrowing — root beforeLoad guarantees auth
+  // TypeScript narrowing - root beforeLoad guarantees auth
   if (!currentUser) return null
 
   const columns: Array<DataTableColumn<User>> = [

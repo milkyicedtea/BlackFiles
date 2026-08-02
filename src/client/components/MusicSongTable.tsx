@@ -21,7 +21,7 @@ interface MusicSongTableProps {
 }
 
 export function formatMusicDuration(seconds: number | null): string {
-  if (seconds === null || !Number.isFinite(seconds)) return '—'
+  if (seconds === null || !Number.isFinite(seconds)) return '-'
 
   const wholeSeconds = Math.max(0, Math.round(seconds))
   const hours = Math.floor(wholeSeconds / 3600)
@@ -82,7 +82,7 @@ export function MusicSongTable({
       visibleMediaQuery: (theme) => `(min-width: ${theme.breakpoints.md})`,
       render: (song) => (
         <Text size="sm" c={song.genre ? undefined : 'dimmed'} lineClamp={1}>
-          {song.genre || '—'}
+          {song.genre || '-'}
         </Text>
       ),
     },

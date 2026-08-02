@@ -197,7 +197,7 @@ pub async fn refresh(
 
 // User management
 
-/// GET /api/check — Check if current user is authenticated
+/// GET /api/check - Check if current user is authenticated
 #[get("/check")]
 pub async fn check_auth(
     pool: &State<Pool>,

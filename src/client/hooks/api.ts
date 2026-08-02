@@ -8,7 +8,7 @@ declare module 'axios' {
     // Suppress both success and error notifications for this request.
     _silent?: boolean
     // Success toast message. If omitted for mutating methods, no success
-    // toast is shown — set this at call sites whose success should be surfaced.
+    // toast is shown - set this at call sites whose success should be surfaced.
     _successMessage?: string
     // Override the error toast message. Defaults to the server's `error` field
     // or the axios error message.
@@ -84,7 +84,7 @@ api.interceptors.response.use(
 
     // The refresh path above rejects on final failure; the internal refresh
     // call is `_silent`, and the retried original request carries its own
-    // `_silent` flag — so suppressed requests don't double-toast.
+    // `_silent` flag - so suppressed requests don't double-toast.
     if (!cfg?._silent) {
       notifications.show({
         title: 'Error',
