@@ -204,6 +204,11 @@ pub async fn check_auth(
     user: AuthenticatedUser,
 ) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
     let client = get_client(pool).await?;
+    let profile = find_user_by_id(&client, user.id)
+        .await
+        .map_err(db_error)?
+        .map(|row| row_to_user(&row))
+        .ok_or_else(|| not_found("User not found"))?;
 
     let rows = client
         .query(
@@ -220,9 +225,12 @@ pub async fn check_auth(
 
     Ok(Json(serde_json::json!({
         "user": {
-            "id": user.id,
-            "username": user.username,
-            "role_name": user.role,
+            "id": profile.id,
+            "username": profile.username,
+            "role_id": profile.role_id,
+            "role_name": profile.role_name,
+            "created_at": profile.created_at,
+            "updated_at": profile.updated_at,
             "permissions": permissions,
         }
     })))

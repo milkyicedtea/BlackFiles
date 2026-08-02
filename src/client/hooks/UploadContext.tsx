@@ -1,4 +1,5 @@
 import { queryKeys } from '@local/hooks/queryKeys'
+import { musicQueryKeys } from '@local/hooks/useMusic'
 import { useQueryClient } from '@tanstack/react-query'
 import Uppy from '@uppy/core'
 import Tus from '@uppy/tus'
@@ -19,8 +20,11 @@ interface UppyUploadFile {
   }
 }
 
+export type UploadKind = 'file' | 'music'
+
 export interface UploadItem {
   id: string
+  kind: UploadKind
   name: string
   progress: number
   status: 'uploading' | 'resumable' | 'done' | 'error' | 'cancelled'
@@ -33,16 +37,36 @@ export interface UploadItem {
 interface UploadContextValue {
   items: Array<UploadItem>
   addFiles: (files: FileList | Array<File>, targetPath: string) => void
+  addMusicFiles: (files: FileList | Array<File>) => void
   cancel: (id: string) => void
   remove: (id: string) => void
   resume: (id: string, file: File) => void
-  clearCompleted: () => void
+  clearAll: (kind: UploadKind) => void
   hasActive: boolean
-  hasAny: boolean
   activeCount: number
 }
 
 const TUS_CHUNK_SIZE = 8 * 1024 * 1024
+export const MUSIC_UPLOAD_FILE_TYPES = ['audio/*', '.mp3', '.flac', '.m4a', '.ogg', '.oga', '.wav']
+
+function createUploader(endpoint: string, allowedFileTypes?: Array<string>) {
+  return new Uppy({
+    autoProceed: true,
+    ...(allowedFileTypes ? { restrictions: { allowedFileTypes } } : {}),
+  }).use(Tus, {
+    endpoint,
+    withCredentials: true,
+    chunkSize: TUS_CHUNK_SIZE,
+    limit: 3,
+    retryDelays: [0, 1000, 3000, 5000],
+    onShouldRetry: (error, _retryAttempt, _options, defaultOnShouldRetry) => {
+      const status = error.originalResponse?.getStatus()
+      if (status !== undefined && status >= 400 && status < 500) return false
+      return defaultOnShouldRetry(error)
+    },
+    removeFingerprintOnSuccess: true,
+  })
+}
 
 function uploadErrorMessage(error: { message?: string }): string {
   if (
@@ -73,6 +97,14 @@ function uploadErrorMessage(error: { message?: string }): string {
   return error.message || 'Upload failed'
 }
 
+function deleteTusUpload(uploadUrl: string) {
+  void fetch(uploadUrl, {
+    method: 'DELETE',
+    credentials: 'same-origin',
+    headers: { 'Tus-Resumable': '1.0.0' },
+  }).catch(() => undefined)
+}
+
 const UploadContext = createContext<UploadContextValue | null>(null)
 
 function isPendingTusUpload(value: unknown): value is PendingTusUpload {
@@ -93,22 +125,10 @@ function isPendingTusUpload(value: unknown): value is PendingTusUpload {
 export function UploadProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<Array<UploadItem>>([])
   const queryClient = useQueryClient()
-  const uploadFileIds = useRef<Map<string, string>>(new Map())
-  const [uppy] = useState(() =>
-    new Uppy({ autoProceed: true }).use(Tus, {
-      endpoint: '/api/uploads',
-      withCredentials: true,
-      chunkSize: TUS_CHUNK_SIZE,
-      limit: 3,
-      retryDelays: [0, 1000, 3000, 5000],
-      onShouldRetry: (error, _retryAttempt, _options, defaultOnShouldRetry) => {
-        const status = error.originalResponse?.getStatus()
-        if (status !== undefined && status >= 400 && status < 500) return false
-        return defaultOnShouldRetry(error)
-      },
-      removeFingerprintOnSuccess: true,
-    })
-  )
+  const fileUploadIds = useRef<Map<string, string>>(new Map())
+  const musicUploadIds = useRef<Map<string, string>>(new Map())
+  const [fileUppy] = useState(() => createUploader('/api/uploads'))
+  const [musicUppy] = useState(() => createUploader('/api/music/uploads', MUSIC_UPLOAD_FILE_TYPES))
 
   const updateItem = useCallback((id: string, patch: Partial<UploadItem>) => {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)))
@@ -134,6 +154,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
               const name = session.target_path.split('/').at(-1) || session.target_path
               return {
                 id: session.id,
+                kind: 'file' as const,
                 name,
                 progress:
                   session.upload_length > 0
@@ -155,109 +176,135 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       active = false
     }
   }, [])
+
   useEffect(() => {
-    const getClientUploadId = (file: UppyUploadFile | undefined) => {
-      const id = file?.meta.clientUploadId
-      return typeof id === 'string' ? id : null
-    }
+    const bindUploadEvents = (uppy: typeof fileUppy, kind: UploadKind) => {
+      const getClientUploadId = (file: UppyUploadFile | undefined) => {
+        const id = file?.meta.clientUploadId
+        return typeof id === 'string' ? id : null
+      }
 
-    const handleProgress = (
-      file: UppyUploadFile | undefined,
-      progress: { bytesUploaded: number; bytesTotal: number | null }
-    ) => {
-      const id = getClientUploadId(file)
-      if (!id) return
-      const total = progress.bytesTotal
-      const uploadUrl = file?.tus?.uploadUrl
-      updateItem(id, {
-        progress: total && total > 0 ? Math.round((progress.bytesUploaded * 100) / total) : 100,
-        ...(uploadUrl ? { uploadUrl } : {}),
-      })
-    }
+      const handleProgress = (
+        file: UppyUploadFile | undefined,
+        progress: { bytesUploaded: number; bytesTotal: number | null }
+      ) => {
+        const id = getClientUploadId(file)
+        if (!id) return
+        const total = progress.bytesTotal
+        const uploadUrl = file?.tus?.uploadUrl
+        updateItem(id, {
+          progress: total && total > 0 ? Math.round((progress.bytesUploaded * 100) / total) : 100,
+          ...(uploadUrl ? { uploadUrl } : {}),
+        })
+      }
 
-    const handleSuccess = (file: UppyUploadFile | undefined) => {
-      const id = getClientUploadId(file)
-      if (!id) return
-      updateItem(id, { progress: 100, status: 'done' })
-      queryClient.invalidateQueries({ queryKey: queryKeys.directory.all })
-    }
+      const handleSuccess = (file: UppyUploadFile | undefined) => {
+        const id = getClientUploadId(file)
+        if (!id) return
+        const uploadUrl = file?.tus?.uploadUrl
+        updateItem(id, {
+          progress: 100,
+          status: 'done',
+          ...(uploadUrl ? { uploadUrl } : {}),
+        })
+        void queryClient.invalidateQueries({
+          queryKey: kind === 'file' ? queryKeys.directory.all : musicQueryKeys.global.all,
+        })
+      }
 
-    const handleError = (file: UppyUploadFile | undefined, error: { message?: string }) => {
-      const id = getClientUploadId(file)
-      if (!id) return
-      setItems((prev) =>
-        prev.map((item) =>
-          item.id === id && item.status === 'uploading'
-            ? { ...item, status: 'error', error: uploadErrorMessage(error) }
-            : item
+      const handleError = (file: UppyUploadFile | undefined, error: { message?: string }) => {
+        const id = getClientUploadId(file)
+        if (!id) return
+        setItems((prev) =>
+          prev.map((item) =>
+            item.id === id && item.status === 'uploading'
+              ? { ...item, status: 'error', error: uploadErrorMessage(error) }
+              : item
+          )
         )
-      )
+      }
+
+      uppy.on('upload-progress', handleProgress)
+      uppy.on('upload-success', handleSuccess)
+      uppy.on('upload-error', handleError)
+
+      return () => {
+        uppy.off('upload-progress', handleProgress)
+        uppy.off('upload-success', handleSuccess)
+        uppy.off('upload-error', handleError)
+      }
     }
 
-    uppy.on('upload-progress', handleProgress)
-    uppy.on('upload-success', handleSuccess)
-    uppy.on('upload-error', handleError)
-
+    const unbindFileEvents = bindUploadEvents(fileUppy, 'file')
+    const unbindMusicEvents = bindUploadEvents(musicUppy, 'music')
     return () => {
-      uppy.off('upload-progress', handleProgress)
-      uppy.off('upload-success', handleSuccess)
-      uppy.off('upload-error', handleError)
+      unbindFileEvents()
+      unbindMusicEvents()
     }
-  }, [queryClient, updateItem, uppy])
+  }, [fileUppy, musicUppy, queryClient, updateItem])
 
   const cancelItem = useCallback(
     (id: string) => {
-      const uppyFileId = uploadFileIds.current.get(id)
+      const item = items.find((entry) => entry.id === id)
+      if (!item) return
+      const uploadIds = item.kind === 'file' ? fileUploadIds.current : musicUploadIds.current
+      const uppy = item.kind === 'file' ? fileUppy : musicUppy
+      const uppyFileId = uploadIds.get(id)
       if (uppyFileId && uppy.getFile(uppyFileId)) uppy.removeFile(uppyFileId)
       setItems((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, status: 'cancelled' as const } : item))
+        prev.map((entry) => (entry.id === id ? { ...entry, status: 'cancelled' as const } : entry))
       )
     },
-    [uppy]
+    [fileUppy, items, musicUppy]
   )
 
   const removeItem = useCallback(
     (id: string) => {
       const item = items.find((entry) => entry.id === id)
-      const uppyFileId = uploadFileIds.current.get(id)
-      if (uppyFileId && uppy.getFile(uppyFileId)) {
-        uppy.removeFile(uppyFileId)
-      } else if (item?.uploadUrl) {
-        void fetch(item.uploadUrl, {
-          method: 'DELETE',
-          credentials: 'same-origin',
-          headers: { 'Tus-Resumable': '1.0.0' },
-        })
-      }
-      uploadFileIds.current.delete(id)
+      if (!item) return
+      const uploadIds = item.kind === 'file' ? fileUploadIds.current : musicUploadIds.current
+      const uppy = item.kind === 'file' ? fileUppy : musicUppy
+      const uppyFileId = uploadIds.get(id)
+      if (uppyFileId && uppy.getFile(uppyFileId)) uppy.removeFile(uppyFileId)
+      if (item.uploadUrl) deleteTusUpload(item.uploadUrl)
+      uploadIds.delete(id)
       setItems((prev) => prev.filter((entry) => entry.id !== id))
     },
-    [items, uppy]
+    [fileUppy, items, musicUppy]
   )
 
-  const clearCompleted = useCallback(() => {
-    for (const item of items) {
-      if (item.status === 'uploading' || item.status === 'resumable') continue
-      const uppyFileId = uploadFileIds.current.get(item.id)
-      if (uppyFileId && uppy.getFile(uppyFileId)) uppy.removeFile(uppyFileId)
-      uploadFileIds.current.delete(item.id)
-    }
-    setItems((prev) =>
-      prev.filter((item) => item.status === 'uploading' || item.status === 'resumable')
-    )
-  }, [items, uppy])
+  const clearAll = useCallback(
+    (kind: UploadKind) => {
+      const uploadIds = kind === 'file' ? fileUploadIds.current : musicUploadIds.current
+      const uppy = kind === 'file' ? fileUppy : musicUppy
+      for (const item of items) {
+        if (item.kind !== kind) continue
+        const uppyFileId = uploadIds.get(item.id)
+        if (uppyFileId && uppy.getFile(uppyFileId)) uppy.removeFile(uppyFileId)
+        if (item.uploadUrl) deleteTusUpload(item.uploadUrl)
+        uploadIds.delete(item.id)
+      }
+      setItems((prev) => prev.filter((item) => item.kind !== kind))
+    },
+    [fileUppy, items, musicUppy]
+  )
 
-  const addFilesHandler = useCallback(
-    (files: FileList | Array<File>, targetPath: string) => {
+  const queueFiles = useCallback(
+    (kind: UploadKind, files: FileList | Array<File>, targetPath: string) => {
+      const uppy = kind === 'file' ? fileUppy : musicUppy
+      const uploadIds = kind === 'file' ? fileUploadIds.current : musicUploadIds.current
+
       for (const file of Array.from(files)) {
         const id = crypto.randomUUID()
+        const filePath = targetPath ? `${targetPath}/${file.name}` : file.name
         const entry: UploadItem = {
           id,
+          kind,
           name: file.name,
           progress: 0,
           status: 'uploading',
           size: file.size,
-          filePath: targetPath ? `${targetPath}/${file.name}` : file.name,
+          filePath,
         }
 
         setItems((prev) => [...prev, entry])
@@ -266,14 +313,21 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             name: file.name,
             type: file.type,
             data: file,
-            meta: {
-              clientUploadId: id,
-              filename: file.name,
-              targetPath,
-              relativePath: targetPath ? `${targetPath}/${file.name}` : file.name,
-            },
+            meta:
+              kind === 'file'
+                ? {
+                    clientUploadId: id,
+                    filename: file.name,
+                    targetPath,
+                    relativePath: filePath,
+                  }
+                : {
+                    clientUploadId: id,
+                    filename: file.name,
+                    targetPath: '',
+                  },
           })
-          uploadFileIds.current.set(id, uppyFileId)
+          uploadIds.set(id, uppyFileId)
         } catch (error) {
           updateItem(id, {
             status: 'error',
@@ -282,13 +336,27 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [updateItem, uppy]
+    [fileUppy, musicUppy, updateItem]
+  )
+
+  const addFilesHandler = useCallback(
+    (files: FileList | Array<File>, targetPath: string) => {
+      queueFiles('file', files, targetPath)
+    },
+    [queueFiles]
+  )
+
+  const addMusicFilesHandler = useCallback(
+    (files: FileList | Array<File>) => {
+      queueFiles('music', files, '')
+    },
+    [queueFiles]
   )
 
   const resumeItem = useCallback(
     (id: string, file: File) => {
       const item = items.find((entry) => entry.id === id)
-      if (item?.status !== 'resumable' || !item.uploadUrl) return
+      if (item?.kind !== 'file' || item.status !== 'resumable' || !item.uploadUrl) return
       if (file.name !== item.name || file.size !== item.size) {
         updateItem(id, { error: 'Select the original file to resume this upload' })
         return
@@ -298,7 +366,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       const targetPath = separator === -1 ? '' : item.filePath.slice(0, separator)
       updateItem(id, { status: 'uploading', error: undefined })
       try {
-        const uppyFileId = uppy.addFile({
+        const uppyFileId = fileUppy.addFile({
           name: file.name,
           type: file.type,
           data: file,
@@ -309,8 +377,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             relativePath: item.filePath,
           },
         })
-        uppy.setFileState(uppyFileId, { tus: { uploadUrl: item.uploadUrl } })
-        uploadFileIds.current.set(id, uppyFileId)
+        fileUppy.setFileState(uppyFileId, { tus: { uploadUrl: item.uploadUrl } })
+        fileUploadIds.current.set(id, uppyFileId)
       } catch (error) {
         updateItem(id, {
           status: 'resumable',
@@ -318,7 +386,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         })
       }
     },
-    [items, updateItem, uppy]
+    [fileUppy, items, updateItem]
   )
 
   const activeCount = items.filter((item) => item.status === 'uploading').length
@@ -328,12 +396,12 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       value={{
         items,
         addFiles: addFilesHandler,
+        addMusicFiles: addMusicFilesHandler,
         cancel: cancelItem,
         remove: removeItem,
         resume: resumeItem,
-        clearCompleted,
+        clearAll,
         hasActive: activeCount > 0,
-        hasAny: items.length > 0,
         activeCount,
       }}
     >

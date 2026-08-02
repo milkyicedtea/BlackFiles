@@ -27,7 +27,7 @@ import type { DataTableColumn } from 'mantine-datatable'
 import { DataTable } from 'mantine-datatable'
 import { useState } from 'react'
 
-export const Route = createFileRoute('/settings/roles')({
+export const Route = createFileRoute('/admin/roles')({
   component: () => (
     <ProtectedPage requireAdmin>
       <RolesPage />

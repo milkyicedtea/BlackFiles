@@ -32,7 +32,7 @@ pub struct NowPlayingEntry {
 
 // ── Phase 6: Scrobble ──
 
-#[get("/rest/scrobble")]
+#[get("/scrobble")]
 pub(crate) async fn scrobble(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -76,7 +76,7 @@ pub(crate) async fn scrobble(
     ok_empty_resp()
 }
 
-#[get("/rest/getNowPlaying")]
+#[get("/getNowPlaying")]
 pub(crate) async fn get_now_playing(
     pool: &State<Pool>,
     _user: SubsonicUser,

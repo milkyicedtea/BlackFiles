@@ -17,6 +17,7 @@ pub(crate) use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 pub(crate) use uuid::Uuid;
 
 // Submodules
+pub(crate) mod bookmarks;
 pub(crate) mod browse;
 pub(crate) mod envelope;
 pub(crate) mod guards;
@@ -29,6 +30,6 @@ pub(crate) mod system;
 
 // Re-exports for parent (main.rs)
 pub(crate) use {
-    browse::*, envelope::*, guards::*, media::*, playlists::*, scrobble_api::*, shared::*,
-    starred::*, system::*,
+    bookmarks::*, browse::*, envelope::*, guards::*, media::*, playlists::*, scrobble_api::*,
+    shared::*, starred::*, system::*,
 };

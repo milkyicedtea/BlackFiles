@@ -66,7 +66,7 @@ async fn playlist_owner(
 
 // ── Phase 6: Playlists ──
 
-#[get("/rest/getPlaylists")]
+#[get("/getPlaylists")]
 pub(crate) async fn get_playlists(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -113,7 +113,7 @@ pub(crate) async fn get_playlists(
     })
 }
 
-#[get("/rest/getPlaylist?<id>")]
+#[get("/getPlaylist?<id>")]
 pub(crate) async fn get_playlist(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -182,7 +182,7 @@ pub(crate) async fn get_playlist(
     })
 }
 
-#[get("/rest/createPlaylist")]
+#[get("/createPlaylist")]
 pub(crate) async fn create_playlist(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -288,7 +288,7 @@ pub(crate) async fn create_playlist(
     ok_empty_resp()
 }
 
-#[get("/rest/updatePlaylist")]
+#[get("/updatePlaylist")]
 pub(crate) async fn update_playlist(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -441,7 +441,7 @@ pub(crate) async fn update_playlist(
     ok_empty_resp()
 }
 
-#[get("/rest/deletePlaylist")]
+#[get("/deletePlaylist")]
 pub(crate) async fn delete_playlist(
     pool: &State<Pool>,
     user: SubsonicUser,

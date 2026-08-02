@@ -13,11 +13,14 @@ import {
 } from '@mantine/core'
 import {
   IconFolder,
+  IconKey,
   IconLink,
   IconMoon,
+  IconMusic,
   IconSettings,
   IconShieldLock,
   IconSun,
+  IconUser,
   IconUsers,
 } from '@tabler/icons-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -36,6 +39,8 @@ export function SideNav() {
   const canCreateUploadLinks = usePermission('create_upload_links')
   const canViewUploadLinks = usePermission('view_upload_links')
   const canManageUploadLinks = admin || canCreateUploadLinks || canViewUploadLinks
+  const hasApiKeyPermission = usePermission('music_manage_api_keys')
+  const canManageApiKeys = admin || hasApiKeyPermission
 
   function toggleColorScheme() {
     setColorScheme(colorScheme === 'dark' ? 'light' : 'dark')
@@ -66,6 +71,16 @@ export function SideNav() {
             fz="xs"
           />
 
+          <NavLink
+            component={Link}
+            preload="intent"
+            to="/music"
+            label="Music"
+            leftSection={<IconMusic size={16} />}
+            styles={compact}
+            fz="xs"
+          />
+
           {canManageUploadLinks && (
             <NavLink
               component={Link}
@@ -78,10 +93,53 @@ export function SideNav() {
             />
           )}
 
+          <NavLink
+            label="Settings"
+            leftSection={<IconSettings size={16} />}
+            defaultOpened
+            childrenOffset={0}
+            styles={compact}
+            fz="xs"
+          >
+            <NavLink
+              component={Link}
+              preload="intent"
+              to="/settings"
+              activeOptions={{ exact: true }}
+              label="Overview"
+              leftSection={<IconSettings size={14} />}
+              pl="xl"
+              styles={compact}
+              fz="xs"
+            />
+            <NavLink
+              component={Link}
+              preload="intent"
+              to="/settings/general"
+              label="General"
+              leftSection={<IconUser size={14} />}
+              pl="xl"
+              styles={compact}
+              fz="xs"
+            />
+            {canManageApiKeys && (
+              <NavLink
+                component={Link}
+                preload="intent"
+                to="/settings/api-keys"
+                label="API keys"
+                leftSection={<IconKey size={14} />}
+                pl="xl"
+                styles={compact}
+                fz="xs"
+              />
+            )}
+          </NavLink>
+
           {admin && (
             <NavLink
-              label="Settings"
-              leftSection={<IconSettings size={16} />}
+              label="Admin"
+              leftSection={<IconShieldLock size={16} />}
               defaultOpened
               childrenOffset={0}
               styles={compact}
@@ -90,10 +148,10 @@ export function SideNav() {
               <NavLink
                 component={Link}
                 preload="intent"
-                to="/settings"
+                to="/admin"
                 activeOptions={{ exact: true }}
                 label="Overview"
-                leftSection={<IconSettings size={14} />}
+                leftSection={<IconShieldLock size={14} />}
                 pl="xl"
                 styles={compact}
                 fz="xs"
@@ -101,7 +159,7 @@ export function SideNav() {
               <NavLink
                 component={Link}
                 preload="intent"
-                to="/settings/users"
+                to="/admin/users"
                 label="Users"
                 leftSection={<IconUsers size={14} />}
                 pl="xl"
@@ -111,9 +169,19 @@ export function SideNav() {
               <NavLink
                 component={Link}
                 preload="intent"
-                to="/settings/roles"
+                to="/admin/roles"
                 label="Roles"
                 leftSection={<IconShieldLock size={14} />}
+                pl="xl"
+                styles={compact}
+                fz="xs"
+              />
+              <NavLink
+                component={Link}
+                preload="intent"
+                to="/admin/api-keys"
+                label="API keys"
+                leftSection={<IconKey size={14} />}
                 pl="xl"
                 styles={compact}
                 fz="xs"
@@ -125,7 +193,12 @@ export function SideNav() {
 
       <Divider mt={2} />
       <Flex align="center" justify="space-between" px="sm" pt="xs">
-        <ActionIcon variant="default" onClick={toggleColorScheme} size="md">
+        <ActionIcon
+          variant="default"
+          onClick={toggleColorScheme}
+          size="md"
+          aria-label={`Switch to ${colorScheme === 'dark' ? 'light' : 'dark'} theme`}
+        >
           {colorScheme === 'dark' ? <IconMoon size={16} /> : <IconSun size={16} />}
         </ActionIcon>
         {user && (

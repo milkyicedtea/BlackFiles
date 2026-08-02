@@ -1,4 +1,4 @@
-import type { PasswordFormValues } from '@local/hooks/useUsers'
+import type { PasswordFormValues } from '@local/types/settings'
 import { Button, Group, PasswordInput, Stack } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { modals } from '@mantine/modals'

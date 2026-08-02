@@ -12,11 +12,6 @@ export interface CreateFormValues {
   role_name: string
 }
 
-export interface PasswordFormValues {
-  password: string
-  confirmPassword: string
-}
-
 interface UpdateRoleVars {
   userId: string
   role: string

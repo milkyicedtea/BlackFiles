@@ -10,17 +10,27 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UploadLinksRouteImport } from './routes/upload-links'
+import { Route as MusicRouteImport } from './routes/music'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as BrowseRouteImport } from './routes/browse'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as UploadTokenRouteImport } from './routes/upload.$token'
-import { Route as SettingsUsersRouteImport } from './routes/settings/users'
-import { Route as SettingsRolesRouteImport } from './routes/settings/roles'
+import { Route as SettingsGeneralRouteImport } from './routes/settings/general'
+import { Route as SettingsApiKeysRouteImport } from './routes/settings/api-keys'
+import { Route as AdminUsersRouteImport } from './routes/admin/users'
+import { Route as AdminRolesRouteImport } from './routes/admin/roles'
+import { Route as AdminApiKeysRouteImport } from './routes/admin/api-keys'
 
 const UploadLinksRoute = UploadLinksRouteImport.update({
   id: '/upload-links',
   path: '/upload-links',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MusicRoute = MusicRouteImport.update({
+  id: '/music',
+  path: '/music',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -43,19 +53,39 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/settings/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const UploadTokenRoute = UploadTokenRouteImport.update({
   id: '/upload/$token',
   path: '/upload/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsUsersRoute = SettingsUsersRouteImport.update({
-  id: '/settings/users',
-  path: '/settings/users',
+const SettingsGeneralRoute = SettingsGeneralRouteImport.update({
+  id: '/settings/general',
+  path: '/settings/general',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsRolesRoute = SettingsRolesRouteImport.update({
-  id: '/settings/roles',
-  path: '/settings/roles',
+const SettingsApiKeysRoute = SettingsApiKeysRouteImport.update({
+  id: '/settings/api-keys',
+  path: '/settings/api-keys',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/admin/users',
+  path: '/admin/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRolesRoute = AdminRolesRouteImport.update({
+  id: '/admin/roles',
+  path: '/admin/roles',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminApiKeysRoute = AdminApiKeysRouteImport.update({
+  id: '/admin/api-keys',
+  path: '/admin/api-keys',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -63,20 +93,30 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
   '/login': typeof LoginRoute
+  '/music': typeof MusicRoute
   '/upload-links': typeof UploadLinksRoute
-  '/settings/roles': typeof SettingsRolesRoute
-  '/settings/users': typeof SettingsUsersRoute
+  '/admin/api-keys': typeof AdminApiKeysRoute
+  '/admin/roles': typeof AdminRolesRoute
+  '/admin/users': typeof AdminUsersRoute
+  '/settings/api-keys': typeof SettingsApiKeysRoute
+  '/settings/general': typeof SettingsGeneralRoute
   '/upload/$token': typeof UploadTokenRoute
+  '/admin/': typeof AdminIndexRoute
   '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
   '/login': typeof LoginRoute
+  '/music': typeof MusicRoute
   '/upload-links': typeof UploadLinksRoute
-  '/settings/roles': typeof SettingsRolesRoute
-  '/settings/users': typeof SettingsUsersRoute
+  '/admin/api-keys': typeof AdminApiKeysRoute
+  '/admin/roles': typeof AdminRolesRoute
+  '/admin/users': typeof AdminUsersRoute
+  '/settings/api-keys': typeof SettingsApiKeysRoute
+  '/settings/general': typeof SettingsGeneralRoute
   '/upload/$token': typeof UploadTokenRoute
+  '/admin': typeof AdminIndexRoute
   '/settings': typeof SettingsIndexRoute
 }
 export interface FileRoutesById {
@@ -84,10 +124,15 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
   '/login': typeof LoginRoute
+  '/music': typeof MusicRoute
   '/upload-links': typeof UploadLinksRoute
-  '/settings/roles': typeof SettingsRolesRoute
-  '/settings/users': typeof SettingsUsersRoute
+  '/admin/api-keys': typeof AdminApiKeysRoute
+  '/admin/roles': typeof AdminRolesRoute
+  '/admin/users': typeof AdminUsersRoute
+  '/settings/api-keys': typeof SettingsApiKeysRoute
+  '/settings/general': typeof SettingsGeneralRoute
   '/upload/$token': typeof UploadTokenRoute
+  '/admin/': typeof AdminIndexRoute
   '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRouteTypes {
@@ -96,30 +141,45 @@ export interface FileRouteTypes {
     | '/'
     | '/browse'
     | '/login'
+    | '/music'
     | '/upload-links'
-    | '/settings/roles'
-    | '/settings/users'
+    | '/admin/api-keys'
+    | '/admin/roles'
+    | '/admin/users'
+    | '/settings/api-keys'
+    | '/settings/general'
     | '/upload/$token'
+    | '/admin/'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/browse'
     | '/login'
+    | '/music'
     | '/upload-links'
-    | '/settings/roles'
-    | '/settings/users'
+    | '/admin/api-keys'
+    | '/admin/roles'
+    | '/admin/users'
+    | '/settings/api-keys'
+    | '/settings/general'
     | '/upload/$token'
+    | '/admin'
     | '/settings'
   id:
     | '__root__'
     | '/'
     | '/browse'
     | '/login'
+    | '/music'
     | '/upload-links'
-    | '/settings/roles'
-    | '/settings/users'
+    | '/admin/api-keys'
+    | '/admin/roles'
+    | '/admin/users'
+    | '/settings/api-keys'
+    | '/settings/general'
     | '/upload/$token'
+    | '/admin/'
     | '/settings/'
   fileRoutesById: FileRoutesById
 }
@@ -127,10 +187,15 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BrowseRoute: typeof BrowseRoute
   LoginRoute: typeof LoginRoute
+  MusicRoute: typeof MusicRoute
   UploadLinksRoute: typeof UploadLinksRoute
-  SettingsRolesRoute: typeof SettingsRolesRoute
-  SettingsUsersRoute: typeof SettingsUsersRoute
+  AdminApiKeysRoute: typeof AdminApiKeysRoute
+  AdminRolesRoute: typeof AdminRolesRoute
+  AdminUsersRoute: typeof AdminUsersRoute
+  SettingsApiKeysRoute: typeof SettingsApiKeysRoute
+  SettingsGeneralRoute: typeof SettingsGeneralRoute
   UploadTokenRoute: typeof UploadTokenRoute
+  AdminIndexRoute: typeof AdminIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
@@ -141,6 +206,13 @@ declare module '@tanstack/react-router' {
       path: '/upload-links'
       fullPath: '/upload-links'
       preLoaderRoute: typeof UploadLinksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/music': {
+      id: '/music'
+      path: '/music'
+      fullPath: '/music'
+      preLoaderRoute: typeof MusicRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -171,6 +243,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/': {
+      id: '/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/upload/$token': {
       id: '/upload/$token'
       path: '/upload/$token'
@@ -178,18 +257,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UploadTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings/users': {
-      id: '/settings/users'
-      path: '/settings/users'
-      fullPath: '/settings/users'
-      preLoaderRoute: typeof SettingsUsersRouteImport
+    '/settings/general': {
+      id: '/settings/general'
+      path: '/settings/general'
+      fullPath: '/settings/general'
+      preLoaderRoute: typeof SettingsGeneralRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings/roles': {
-      id: '/settings/roles'
-      path: '/settings/roles'
-      fullPath: '/settings/roles'
-      preLoaderRoute: typeof SettingsRolesRouteImport
+    '/settings/api-keys': {
+      id: '/settings/api-keys'
+      path: '/settings/api-keys'
+      fullPath: '/settings/api-keys'
+      preLoaderRoute: typeof SettingsApiKeysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/roles': {
+      id: '/admin/roles'
+      path: '/admin/roles'
+      fullPath: '/admin/roles'
+      preLoaderRoute: typeof AdminRolesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/api-keys': {
+      id: '/admin/api-keys'
+      path: '/admin/api-keys'
+      fullPath: '/admin/api-keys'
+      preLoaderRoute: typeof AdminApiKeysRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -199,10 +299,15 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BrowseRoute: BrowseRoute,
   LoginRoute: LoginRoute,
+  MusicRoute: MusicRoute,
   UploadLinksRoute: UploadLinksRoute,
-  SettingsRolesRoute: SettingsRolesRoute,
-  SettingsUsersRoute: SettingsUsersRoute,
+  AdminApiKeysRoute: AdminApiKeysRoute,
+  AdminRolesRoute: AdminRolesRoute,
+  AdminUsersRoute: AdminUsersRoute,
+  SettingsApiKeysRoute: SettingsApiKeysRoute,
+  SettingsGeneralRoute: SettingsGeneralRoute,
   UploadTokenRoute: UploadTokenRoute,
+  AdminIndexRoute: AdminIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }
 export const routeTree = rootRouteImport

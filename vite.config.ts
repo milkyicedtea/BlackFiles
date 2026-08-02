@@ -27,6 +27,10 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      '/rest': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
     },
   },
 

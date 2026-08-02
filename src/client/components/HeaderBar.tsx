@@ -13,7 +13,11 @@ export function HeaderBar({ mobileOpened, onToggle }: HeaderBarProps) {
   const { user } = useAuth()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const isLoginRoute = pathname === '/login'
-  const isSettingsPage = pathname.startsWith('/settings')
+  const sectionLabel = pathname.startsWith('/settings')
+    ? 'Settings'
+    : pathname.startsWith('/admin')
+      ? 'Admin'
+      : null
 
   return (
     <Group h="100%" px="md" justify="space-between">
@@ -41,9 +45,9 @@ export function HeaderBar({ mobileOpened, onToggle }: HeaderBarProps) {
             </Text>
           </Group>
         </Link>
-        {isSettingsPage && (
+        {sectionLabel && (
           <Badge size="xs" variant="light" color="blue">
-            Settings
+            {sectionLabel}
           </Badge>
         )}
       </Group>

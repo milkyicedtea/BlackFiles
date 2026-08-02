@@ -264,14 +264,14 @@ pub struct GenreList {
 #[derive(Debug, Serialize)]
 #[serde(crate = "rocket::serde")]
 pub struct GenreItem {
-    pub name: String,
+    pub value: String,
     #[serde(rename = "songCount")]
     pub song_count: i64,
     #[serde(rename = "albumCount")]
     pub album_count: i64,
 }
 
-#[get("/rest/getMusicFolders")]
+#[get("/getMusicFolders")]
 pub(crate) fn get_music_folders(_user: SubsonicUser) -> Json<serde_json::Value> {
     ok_resp(MusicFoldersResponse {
         music_folders: MusicFolderList {
@@ -283,7 +283,7 @@ pub(crate) fn get_music_folders(_user: SubsonicUser) -> Json<serde_json::Value> 
     })
 }
 
-#[get("/rest/getIndexes")]
+#[get("/getIndexes")]
 pub(crate) async fn get_indexes(pool: &State<Pool>, user: SubsonicUser) -> Json<serde_json::Value> {
     let Ok(client) = pool.get().await else {
         return db_err_resp();
@@ -338,7 +338,7 @@ pub(crate) async fn get_indexes(pool: &State<Pool>, user: SubsonicUser) -> Json<
     })
 }
 
-#[get("/rest/getMusicDirectory?<id>")]
+#[get("/getMusicDirectory?<id>")]
 pub(crate) async fn get_music_directory(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -467,7 +467,7 @@ pub(crate) async fn get_music_directory(
     ok_resp(DirectoryResponse { directory: dir })
 }
 
-#[get("/rest/getArtists")]
+#[get("/getArtists")]
 pub(crate) async fn get_artists(pool: &State<Pool>, user: SubsonicUser) -> Json<serde_json::Value> {
     let Ok(client) = pool.get().await else {
         return db_err_resp();
@@ -510,7 +510,7 @@ pub(crate) async fn get_artists(pool: &State<Pool>, user: SubsonicUser) -> Json<
     })
 }
 
-#[get("/rest/getArtist?<id>")]
+#[get("/getArtist?<id>")]
 pub(crate) async fn get_artist(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -557,7 +557,7 @@ pub(crate) async fn get_artist(
     })
 }
 
-#[get("/rest/getAlbum?<id>")]
+#[get("/getAlbum?<id>")]
 pub(crate) async fn get_album(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -614,7 +614,7 @@ pub(crate) async fn get_album(
     })
 }
 
-#[get("/rest/getSong?<id>")]
+#[get("/getSong?<id>")]
 pub(crate) async fn get_song(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -729,7 +729,7 @@ async fn album_list(
     })
 }
 
-#[get("/rest/getAlbumList2?<query..>")]
+#[get("/getAlbumList2?<query..>")]
 pub(crate) async fn get_album_list2(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -738,7 +738,7 @@ pub(crate) async fn get_album_list2(
     album_list(pool, user, query).await
 }
 
-#[get("/rest/getAlbumList?<query..>")]
+#[get("/getAlbumList?<query..>")]
 pub(crate) async fn get_album_list(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -747,7 +747,7 @@ pub(crate) async fn get_album_list(
     album_list(pool, user, query).await
 }
 
-#[get("/rest/getGenres")]
+#[get("/getGenres")]
 pub(crate) async fn get_genres(pool: &State<Pool>, user: SubsonicUser) -> Json<serde_json::Value> {
     let Ok(client) = pool.get().await else {
         return db_err_resp();
@@ -770,7 +770,7 @@ pub(crate) async fn get_genres(pool: &State<Pool>, user: SubsonicUser) -> Json<s
     let genres: Vec<GenreItem> = rows
         .iter()
         .map(|r| GenreItem {
-            name: r.get("genre"),
+            value: r.get("genre"),
             song_count: r.get("song_count"),
             album_count: r.get("album_count"),
         })
@@ -779,4 +779,33 @@ pub(crate) async fn get_genres(pool: &State<Pool>, user: SubsonicUser) -> Json<s
     ok_resp(GenresResponse {
         genres: GenreList { genre: genres },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn genre_items_use_the_subsonic_value_field() {
+        let response = serde_json::to_value(SubsonicResponse::ok(GenresResponse {
+            genres: GenreList {
+                genre: vec![GenreItem {
+                    value: "Rock".into(),
+                    song_count: 2,
+                    album_count: 1,
+                }],
+            },
+        }))
+        .expect("genre response should serialize");
+        let genre = &response["subsonic-response"]["genres"]["genre"][0];
+
+        assert_eq!(
+            genre,
+            &serde_json::json!({
+                "value": "Rock",
+                "songCount": 2,
+                "albumCount": 1,
+            })
+        );
+    }
 }

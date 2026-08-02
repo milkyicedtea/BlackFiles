@@ -21,7 +21,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import type { DataTableColumn } from 'mantine-datatable'
 import { DataTable } from 'mantine-datatable'
 
-export const Route = createFileRoute('/settings/users')({
+export const Route = createFileRoute('/admin/users')({
   component: () => (
     <ProtectedPage requireAdmin>
       <UsersPage />

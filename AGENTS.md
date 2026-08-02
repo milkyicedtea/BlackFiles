@@ -218,7 +218,7 @@ See `ROADMAP_MUSIC.md` for the music library implementation plan. Current status
 - [x] Phase 5 — OpenSubsonic Media & Search
 - [x] Phase 6 — OpenSubsonic Playlists & Annotations
 - [x] Phase 6.5 — Refactor
-- [ ] Phase 7 — Blackfiles Music UI
+- [x] Phase 7 — Blackfiles Music UI
 - [ ] Phase 8 — Polish & Tier 2/3 Endpoints
 
 ## Agent Rules

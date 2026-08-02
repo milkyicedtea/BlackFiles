@@ -1,5 +1,5 @@
-import { usePermission } from '@local/hooks/authContext'
-import { useUploader } from '@local/hooks/UploadContext'
+import { isAdmin, useAuth, usePermission } from '@local/hooks/authContext'
+import { type UploadItem, type UploadKind, useUploader } from '@local/hooks/UploadContext'
 import {
   ActionIcon,
   Button,
@@ -7,24 +7,186 @@ import {
   Indicator,
   Popover,
   Progress,
+  ScrollArea,
   Stack,
+  Tabs,
   Text,
   Tooltip,
 } from '@mantine/core'
 import {
   IconAlertCircle,
   IconCircleCheck,
+  IconMusic,
   IconPlayerPlay,
   IconPlayerStop,
+  IconTrash,
   IconUpload,
   IconX,
 } from '@tabler/icons-react'
 import { useRef, useState } from 'react'
 
+const FIVE_UPLOAD_ROWS_HEIGHT =
+  'calc(var(--mantine-spacing-xl) + var(--mantine-spacing-xl) + var(--mantine-spacing-xl) + var(--mantine-spacing-xl) + var(--mantine-spacing-xl))'
+
+interface UploadQueueProps {
+  kind: UploadKind
+  items: Array<UploadItem>
+  onCancel: (id: string) => void
+  onRemove: (id: string) => void
+  onResume: (id: string) => void
+  onClearAll: (kind: UploadKind) => void
+}
+
+function UploadQueue({ kind, items, onCancel, onRemove, onResume, onClearAll }: UploadQueueProps) {
+  const emptyMessage =
+    kind === 'file' ? 'File uploads will appear here.' : 'Audio uploads will appear here.'
+  const queueLabel = kind === 'file' ? 'file' : 'music'
+
+  return (
+    <Stack gap={0}>
+      {items.length === 0 ? (
+        <Text size="xs" c="dimmed" ta="center" py="md">
+          {emptyMessage}
+        </Text>
+      ) : (
+        <ScrollArea.Autosize mah={FIVE_UPLOAD_ROWS_HEIGHT} type="auto" offsetScrollbars>
+          <Stack gap={0}>
+            {items.map((item) => (
+              <Group
+                key={item.id}
+                gap="xs"
+                px="xs"
+                h="var(--mantine-spacing-xl)"
+                wrap="nowrap"
+                style={{
+                  borderRadius: 'var(--mantine-radius-sm)',
+                  background: 'var(--mantine-color-default-hover)',
+                }}
+              >
+                <Text size="xs" truncate style={{ flex: 1, minWidth: 0 }}>
+                  {item.name}
+                </Text>
+
+                {item.status === 'done' && (
+                  <Tooltip label="Upload complete">
+                    <IconCircleCheck
+                      size={16}
+                      color="var(--mantine-color-teal-6)"
+                      aria-label="Upload complete"
+                    />
+                  </Tooltip>
+                )}
+                {item.status === 'error' && (
+                  <Tooltip label={item.error ?? 'Upload failed'}>
+                    <IconAlertCircle
+                      size={16}
+                      color="var(--mantine-color-red-6)"
+                      aria-label="Upload failed"
+                    />
+                  </Tooltip>
+                )}
+                {item.status === 'cancelled' && (
+                  <Text size="xs" c="dimmed">
+                    Cancelled
+                  </Text>
+                )}
+
+                {item.status === 'resumable' && kind === 'file' && (
+                  <>
+                    <Text size="xs" c="dimmed">
+                      Ready to resume
+                    </Text>
+                    {item.error && (
+                      <Tooltip label={item.error}>
+                        <IconAlertCircle
+                          size={16}
+                          color="var(--mantine-color-red-6)"
+                          aria-label="Resume error"
+                        />
+                      </Tooltip>
+                    )}
+                    <Tooltip label="Select the original file to resume">
+                      <ActionIcon
+                        variant="subtle"
+                        size="sm"
+                        aria-label={`Resume ${item.name}`}
+                        onClick={() => onResume(item.id)}
+                      >
+                        <IconPlayerPlay size={14} />
+                      </ActionIcon>
+                    </Tooltip>
+                    <ActionIcon
+                      variant="subtle"
+                      size="sm"
+                      aria-label={`Remove ${item.name}`}
+                      onClick={() => onRemove(item.id)}
+                    >
+                      <IconX size={14} />
+                    </ActionIcon>
+                  </>
+                )}
+
+                {item.status === 'uploading' && (
+                  <>
+                    <Progress
+                      value={item.progress}
+                      size="sm"
+                      w="25%"
+                      color="blue"
+                      animated
+                      aria-label={`${item.name} upload progress`}
+                    />
+                    <ActionIcon
+                      variant="subtle"
+                      size="sm"
+                      color="red"
+                      aria-label={`Cancel ${item.name}`}
+                      onClick={() => onCancel(item.id)}
+                    >
+                      <IconPlayerStop size={14} />
+                    </ActionIcon>
+                  </>
+                )}
+
+                {(item.status === 'error' || item.status === 'cancelled') && (
+                  <ActionIcon
+                    variant="subtle"
+                    size="sm"
+                    aria-label={`Remove ${item.name}`}
+                    onClick={() => onRemove(item.id)}
+                  >
+                    <IconX size={14} />
+                  </ActionIcon>
+                )}
+              </Group>
+            ))}
+          </Stack>
+        </ScrollArea.Autosize>
+      )}
+
+      <Group justify="flex-end" pt="xs">
+        <Button
+          variant="subtle"
+          size="compact-xs"
+          color="red"
+          leftSection={<IconTrash size={14} />}
+          disabled={items.length === 0}
+          aria-label={`Clear all ${queueLabel} uploads`}
+          onClick={() => onClearAll(kind)}
+        >
+          Clear all
+        </Button>
+      </Group>
+    </Stack>
+  )
+}
+
 export function UploadPanel() {
-  const { items, hasActive, hasAny, activeCount, cancel, remove, resume, clearCompleted } =
-    useUploader()
-  const canUpload = usePermission('upload_files')
+  const { items, hasActive, activeCount, cancel, remove, resume, clearAll } = useUploader()
+  const { user } = useAuth()
+  const canUploadFiles = usePermission('upload_files')
+  const hasMusicUploadPermission = usePermission('music_upload')
+  const canUploadMusic = isAdmin(user) || hasMusicUploadPermission
   const resumeInputRef = useRef<HTMLInputElement>(null)
   const [resumingId, setResumingId] = useState<string | null>(null)
 
@@ -38,10 +200,18 @@ export function UploadPanel() {
     setResumingId(null)
   }
 
-  if (!canUpload) return null
+  if (!canUploadFiles && !canUploadMusic) return null
+
+  const fileItems = items.filter((item) => item.kind === 'file')
+  const musicItems = items.filter((item) => item.kind === 'music')
 
   return (
-    <Popover width={320} position="bottom-end" withArrow shadow="md">
+    <Popover
+      width="min(20rem, calc(100vw - var(--mantine-spacing-md)))"
+      position="bottom-end"
+      withArrow
+      shadow="md"
+    >
       <Popover.Target>
         <Tooltip label="Uploads">
           <Indicator disabled={activeCount === 0} color="blue" size={10} offset={6} processing>
@@ -50,6 +220,7 @@ export function UploadPanel() {
               color={hasActive ? 'blue' : 'gray'}
               size="md"
               radius="xl"
+              aria-label="Open uploads"
             >
               <IconUpload size={18} />
             </ActionIcon>
@@ -67,97 +238,45 @@ export function UploadPanel() {
             event.currentTarget.value = ''
           }}
         />
-        <Stack gap={4}>
-          {items.length === 0 && (
-            <Text size="xs" c="dimmed" ta="center" py="sm">
-              No uploads at the moment
-            </Text>
+        <Tabs defaultValue={canUploadFiles ? 'file' : 'music'}>
+          <Tabs.List grow>
+            {canUploadFiles && (
+              <Tabs.Tab value="file" leftSection={<IconUpload size={14} />}>
+                Files
+              </Tabs.Tab>
+            )}
+            {canUploadMusic && (
+              <Tabs.Tab value="music" leftSection={<IconMusic size={14} />}>
+                Music
+              </Tabs.Tab>
+            )}
+          </Tabs.List>
+
+          {canUploadFiles && (
+            <Tabs.Panel value="file" pt="xs">
+              <UploadQueue
+                kind="file"
+                items={fileItems}
+                onCancel={cancel}
+                onRemove={remove}
+                onResume={selectFileToResume}
+                onClearAll={clearAll}
+              />
+            </Tabs.Panel>
           )}
-
-          {items.map((item) => (
-            <Group
-              key={item.id}
-              gap="sm"
-              px="sm"
-              py={4}
-              style={{
-                borderRadius: 'var(--mantine-radius-sm)',
-                background: 'var(--mantine-color-default-hover)',
-              }}
-            >
-              <Text size="xs" truncate style={{ flex: 1, minWidth: 0 }}>
-                {item.name}
-              </Text>
-
-              {item.status === 'done' && (
-                <IconCircleCheck size={16} color="var(--mantine-color-teal-6)" />
-              )}
-              {item.status === 'error' && (
-                <Tooltip label={item.error ?? 'Upload failed'}>
-                  <IconAlertCircle size={16} color="var(--mantine-color-red-6)" />
-                </Tooltip>
-              )}
-              {item.status === 'cancelled' && (
-                <Text size="xs" c="dimmed">
-                  Cancelled
-                </Text>
-              )}
-
-              {item.status === 'resumable' && (
-                <>
-                  <Text size="xs" c="dimmed">
-                    Ready to resume
-                  </Text>
-                  {item.error && (
-                    <Tooltip label={item.error}>
-                      <IconAlertCircle size={16} color="var(--mantine-color-red-6)" />
-                    </Tooltip>
-                  )}
-                  <Tooltip label="Select the original file to resume">
-                    <ActionIcon
-                      variant="subtle"
-                      size="sm"
-                      onClick={() => selectFileToResume(item.id)}
-                    >
-                      <IconPlayerPlay size={14} />
-                    </ActionIcon>
-                  </Tooltip>
-                  <ActionIcon variant="subtle" size="sm" onClick={() => remove(item.id)}>
-                    <IconX size={14} />
-                  </ActionIcon>
-                </>
-              )}
-
-              {item.status === 'uploading' && (
-                <>
-                  <Progress value={item.progress} size="sm" w={80} color="blue" animated />
-                  <ActionIcon
-                    variant="subtle"
-                    size="sm"
-                    color="red"
-                    onClick={() => cancel(item.id)}
-                  >
-                    <IconPlayerStop size={14} />
-                  </ActionIcon>
-                </>
-              )}
-
-              {(item.status === 'error' || item.status === 'cancelled') && (
-                <ActionIcon variant="subtle" size="sm" onClick={() => remove(item.id)}>
-                  <IconX size={14} />
-                </ActionIcon>
-              )}
-            </Group>
-          ))}
-
-          {hasAny && (
-            <Group justify="space-between" mt={4}>
-              <Button variant="subtle" size="compact-xs" color="gray" onClick={clearCompleted}>
-                Clear completed
-              </Button>
-            </Group>
+          {canUploadMusic && (
+            <Tabs.Panel value="music" pt="xs">
+              <UploadQueue
+                kind="music"
+                items={musicItems}
+                onCancel={cancel}
+                onRemove={remove}
+                onResume={selectFileToResume}
+                onClearAll={clearAll}
+              />
+            </Tabs.Panel>
           )}
-        </Stack>
+        </Tabs>
       </Popover.Dropdown>
     </Popover>
   )

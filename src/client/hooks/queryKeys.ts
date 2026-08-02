@@ -25,6 +25,10 @@ export const queryKeys = {
   uploadLinks: {
     all: ['upload-links'] as const,
   },
+  apiKeys: {
+    mine: ['api-keys', 'mine'] as const,
+    admin: ['api-keys', 'admin'] as const,
+  },
   directory: {
     all: ['directory'] as const,
     list: (params: { path: string; limit?: number; offset?: number; search?: string }) =>

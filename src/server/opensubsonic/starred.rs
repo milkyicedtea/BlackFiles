@@ -29,7 +29,7 @@ pub struct Starred2Response {
 
 // ── Phase 6: Starred ──
 
-#[get("/rest/star")]
+#[get("/star")]
 pub(crate) async fn star(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -131,7 +131,7 @@ pub(crate) async fn star(
     ok_empty_resp()
 }
 
-#[get("/rest/unstar")]
+#[get("/unstar")]
 pub(crate) async fn unstar(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -263,7 +263,7 @@ async fn starred_container(pool: &Pool, user_id: Uuid) -> Result<StarredContaine
     build_starred(&client, user_id).await
 }
 
-#[get("/rest/getStarred")]
+#[get("/getStarred")]
 pub(crate) async fn get_starred(pool: &State<Pool>, user: SubsonicUser) -> Json<serde_json::Value> {
     let container = match starred_container(pool, user.id).await {
         Ok(container) => container,
@@ -272,7 +272,7 @@ pub(crate) async fn get_starred(pool: &State<Pool>, user: SubsonicUser) -> Json<
     ok_resp(StarredResponse { starred: container })
 }
 
-#[get("/rest/getStarred2")]
+#[get("/getStarred2")]
 pub(crate) async fn get_starred2(
     pool: &State<Pool>,
     user: SubsonicUser,

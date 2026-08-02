@@ -561,7 +561,9 @@ pub async fn update_user_password(
     update: Json<UpdateUserPasswordRequest>,
 ) -> Result<Json<serde_json::Value>, (Status, Json<serde_json::Value>)> {
     let user_id = parse_user_id(&id)?;
-    require_permission(pool, user.id, "edit_user").await?;
+    if user_id != user.id {
+        require_permission(pool, user.id, "edit_user").await?;
+    }
 
     if update.password.len() < 4 {
         return Err(bad_request("Password must be at least 4 characters"));

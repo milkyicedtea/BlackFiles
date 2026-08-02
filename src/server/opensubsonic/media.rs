@@ -4,19 +4,26 @@ use super::*;
 
 #[derive(Debug, Serialize)]
 #[serde(crate = "rocket::serde")]
-pub struct SearchResponse {
-    #[serde(rename = "searchResult")]
+pub struct Search2Response {
+    #[serde(rename = "searchResult2")]
+    pub search_result: SearchResult,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct Search3Response {
+    #[serde(rename = "searchResult3")]
     pub search_result: SearchResult,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(crate = "rocket::serde")]
 pub struct SearchResult {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "artist", skip_serializing_if = "Option::is_none")]
     pub artists: Option<Vec<ArtistRef>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "album", skip_serializing_if = "Option::is_none")]
     pub albums: Option<Vec<AlbumRef>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "song", skip_serializing_if = "Option::is_none")]
     pub songs: Option<Vec<SongEntry>>,
 }
 
@@ -71,7 +78,7 @@ async fn binary_user_song(
 
 #[allow(non_snake_case)]
 #[allow(clippy::too_many_arguments)]
-#[get("/rest/stream?<id>&<_maxBitRate>&<_format>&<_timeOffset>&<_size>&<_estimateContentLength>")]
+#[get("/stream?<id>&<_maxBitRate>&<_format>&<_timeOffset>&<_size>&<_estimateContentLength>")]
 pub(crate) async fn stream(
     pool: &State<Pool>,
     range_hdr: RangeHeader,
@@ -135,7 +142,7 @@ pub(crate) async fn stream(
         extra_headers,
     })
 }
-#[get("/rest/download?<id>")]
+#[get("/download?<id>")]
 pub(crate) async fn subsonic_download(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -177,7 +184,7 @@ pub(crate) async fn subsonic_download(
     })
 }
 
-#[get("/rest/getCoverArt?<id>&<_size>")]
+#[get("/getCoverArt?<id>&<_size>")]
 pub(crate) async fn get_cover_art(
     pool: &State<Pool>,
     _user: SubsonicUser,
@@ -297,13 +304,18 @@ pub(crate) struct SearchQuery {
     song_offset: Option<i32>,
 }
 
+fn search_pattern(query: &str) -> String {
+    let query = if query == "\"\"" { "" } else { query };
+    format!("%{query}%")
+}
+
 async fn search(
     pool: &State<Pool>,
     user: SubsonicUser,
     query: SearchQuery,
-) -> Json<serde_json::Value> {
+) -> Result<SearchResult, Json<serde_json::Value>> {
     let Ok(client) = pool.get().await else {
-        return db_err_resp();
+        return Err(db_err_resp());
     };
     let artist_count = query.artist_count.unwrap_or(20).min(500) as i64;
     let artist_offset = query.artist_offset.unwrap_or(0) as i64;
@@ -311,7 +323,7 @@ async fn search(
     let album_offset = query.album_offset.unwrap_or(0) as i64;
     let song_count = query.song_count.unwrap_or(20).min(500) as i64;
     let song_offset = query.song_offset.unwrap_or(0) as i64;
-    let pattern = format!("%{}%", query.query);
+    let pattern = search_pattern(&query.query);
 
     let artists = client
         .query(
@@ -367,35 +379,39 @@ async fn search(
         .ok()
         .map(|rows| rows.iter().map(row_to_song_entry).collect());
 
-    ok_resp(SearchResponse {
-        search_result: SearchResult {
-            artists,
-            albums,
-            songs,
-        },
+    Ok(SearchResult {
+        artists,
+        albums,
+        songs,
     })
 }
 
-#[get("/rest/search2?<query..>")]
+#[get("/search2?<query..>")]
 pub(crate) async fn search2(
     pool: &State<Pool>,
     user: SubsonicUser,
     query: SearchQuery,
 ) -> Json<serde_json::Value> {
-    search(pool, user, query).await
+    match search(pool, user, query).await {
+        Ok(search_result) => ok_resp(Search2Response { search_result }),
+        Err(response) => response,
+    }
 }
 
-#[get("/rest/search3?<query..>")]
+#[get("/search3?<query..>")]
 pub(crate) async fn search3(
     pool: &State<Pool>,
     user: SubsonicUser,
     query: SearchQuery,
 ) -> Json<serde_json::Value> {
-    search(pool, user, query).await
+    match search(pool, user, query).await {
+        Ok(search_result) => ok_resp(Search3Response { search_result }),
+        Err(response) => response,
+    }
 }
 
 #[allow(non_snake_case)]
-#[get("/rest/getRandomSongs?<size>&<genre>&<fromYear>&<toYear>&<_musicFolderId>")]
+#[get("/getRandomSongs?<size>&<genre>&<fromYear>&<toYear>&<_musicFolderId>")]
 pub(crate) async fn get_random_songs(
     pool: &State<Pool>,
     user: SubsonicUser,
@@ -427,4 +443,44 @@ pub(crate) async fn get_random_songs(
     ok_resp(RandomSongsResponse {
         randomSongs: RandomSongsList { song: songs },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_search_result() -> SearchResult {
+        SearchResult {
+            artists: Some(Vec::new()),
+            albums: Some(Vec::new()),
+            songs: Some(Vec::new()),
+        }
+    }
+
+    #[test]
+    fn quoted_empty_search_matches_all_media() {
+        assert_eq!(search_pattern("\"\""), "%%");
+        assert_eq!(search_pattern("Rock"), "%Rock%");
+    }
+
+    #[test]
+    fn search_responses_use_versioned_singular_fields() {
+        let search2 = serde_json::to_value(SubsonicResponse::ok(Search2Response {
+            search_result: empty_search_result(),
+        }))
+        .expect("search2 response should serialize");
+        let search3 = serde_json::to_value(SubsonicResponse::ok(Search3Response {
+            search_result: empty_search_result(),
+        }))
+        .expect("search3 response should serialize");
+
+        assert_eq!(
+            search2["subsonic-response"]["searchResult2"],
+            serde_json::json!({"artist": [], "album": [], "song": []})
+        );
+        assert_eq!(
+            search3["subsonic-response"]["searchResult3"],
+            serde_json::json!({"artist": [], "album": [], "song": []})
+        );
+    }
 }

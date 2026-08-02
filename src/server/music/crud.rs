@@ -21,6 +21,7 @@ pub(crate) fn row_to_song(row: &tokio_postgres::Row) -> SongResponse {
         format: row.get("format"),
         bitrate_kbps: row.get("bitrate_kbps"),
         has_cover_art: row.get("has_cover_art"),
+        in_library: row.try_get("in_library").unwrap_or(false),
         created_at: row
             .get::<_, chrono::DateTime<chrono::Utc>>("created_at")
             .to_rfc3339(),
@@ -34,7 +35,7 @@ pub(crate) fn row_to_song(row: &tokio_postgres::Row) -> SongResponse {
 #[get("/music/songs?<page>&<limit>&<search>&<artist>&<album>&<genre>")]
 pub(crate) async fn list_songs(
     pool: &State<Pool>,
-    _user: AuthenticatedUser,
+    user: AuthenticatedUser,
     page: Option<i64>,
     limit: Option<i64>,
     search: Option<String>,
@@ -88,6 +89,9 @@ pub(crate) async fn list_songs(
         .map_err(db_error)?
         .get(0);
 
+    let user_p = idx;
+    params.push(&user.id);
+    idx += 1;
     let lim_p = idx;
     let off_p = idx + 1;
     params.push(&page.limit);
@@ -96,7 +100,12 @@ pub(crate) async fn list_songs(
     let rows = client
         .query(
             &format!(
-                "SELECT * FROM songs {where_clause} \
+                "SELECT songs.*, EXISTS (
+                     SELECT 1 FROM user_songs
+                     WHERE user_songs.user_id = ${user_p}
+                       AND user_songs.song_id = songs.id
+                 ) AS in_library
+                 FROM songs {where_clause} \
                  ORDER BY artist, album, disc_number, track_number, title \
                  LIMIT ${lim_p} OFFSET ${off_p}"
             ),
@@ -111,6 +120,44 @@ pub(crate) async fn list_songs(
         total,
         page: page.number,
         limit: page.limit,
+    }))
+}
+
+#[get("/music/songs/selection?<search>")]
+pub(crate) async fn list_song_selection(
+    pool: &State<Pool>,
+    user: AuthenticatedUser,
+    search: Option<String>,
+) -> Result<Json<SongSelectionResponse>, ApiError> {
+    let client = get_client(pool).await?;
+    let rows = client
+        .query(
+            "SELECT songs.id, EXISTS (
+                 SELECT 1 FROM user_songs
+                 WHERE user_songs.user_id = $1
+                   AND user_songs.song_id = songs.id
+             ) AS in_library
+             FROM songs
+             WHERE (
+                 $2::TEXT IS NULL
+                 OR songs.title ILIKE $2
+                 OR songs.artist ILIKE $2
+                 OR songs.album ILIKE $2
+             )
+             ORDER BY songs.id",
+            &[&user.id, &search],
+        )
+        .await
+        .map_err(db_error)?;
+
+    Ok(Json(SongSelectionResponse {
+        songs: rows
+            .iter()
+            .map(|row| SongSelectionEntry {
+                id: row.get("id"),
+                in_library: row.get("in_library"),
+            })
+            .collect(),
     }))
 }
 

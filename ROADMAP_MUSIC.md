@@ -331,17 +331,17 @@ The current settings pages move under `/admin/`. New personal settings pages are
 
 ### Phase 7 — Blackfiles Music UI & Settings Restructure
 
-- [ ] Restructure frontend routes: `/settings/*` → personal, `/admin/*` → admin.
-- [ ] Migrate `/settings/users` → `/admin/users`, `/settings/roles` → `/admin/roles`.
-- [ ] New `/settings/general` page (profile info, password change).
-- [ ] New `/settings/api-keys` page (list, create, revoke own API keys).
-- [ ] New `/admin/api-keys` page (admin: list all keys by user, revoke any).
-- [ ] New sidebar entry: "Music" (`/music` route).
-- [ ] Global library view: table of songs (title, artist, album, genre, duration), search/filter.
-- [ ] Upload button → file picker → TUS upload.
-- [ ] Personal library view: same table, with "Add from Global" button/modal.
-- [ ] Tag editor modal: inline edit of title/artist/album/genre/year/track.
-- [ ] Delete confirmation with cascade warning.
+- [x] Restructure frontend routes: `/settings/*` → personal, `/admin/*` → admin.
+- [x] Migrate `/settings/users` → `/admin/users`, `/settings/roles` → `/admin/roles`.
+- [x] New `/settings/general` page (profile info, password change).
+- [x] New `/settings/api-keys` page (list, create, revoke own API keys).
+- [x] New `/admin/api-keys` page (admin: list all keys by user, revoke any).
+- [x] New sidebar entry: "Music" (`/music` route).
+- [x] Global library view: table of songs (title, artist, album, genre, duration), search/filter.
+- [x] Upload button → file picker → TUS upload.
+- [x] Personal library view: same table, with "Add from Global" button/modal.
+- [x] Tag editor modal: inline edit of title/artist/album/genre/year/track.
+- [x] Delete confirmation with cascade warning.
 
 ### Phase 8 — Polish & Tier 2/3 Endpoints
 

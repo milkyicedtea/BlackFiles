@@ -2,6 +2,13 @@ use super::*;
 
 use uuid::Uuid;
 
+#[derive(Debug, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub(crate) struct SetLibraryMembershipRequest {
+    song_ids: Vec<Uuid>,
+    in_library: bool,
+}
+
 async fn library_song(
     pool: &Pool,
     song_id: &str,
@@ -49,7 +56,7 @@ pub(crate) async fn list_personal_library(
     let rows = if let Some(ref pattern) = search_pattern {
         client
             .query(
-                "SELECT s.* FROM user_songs us JOIN songs s ON us.song_id=s.id \
+                "SELECT s.*, TRUE AS in_library FROM user_songs us JOIN songs s ON us.song_id=s.id \
                  WHERE us.user_id = $1 \
                  AND (s.title ILIKE $2 OR s.artist ILIKE $2 OR s.album ILIKE $2) \
                  ORDER BY s.artist, s.album, s.disc_number, s.track_number, s.title \
@@ -61,7 +68,7 @@ pub(crate) async fn list_personal_library(
     } else {
         client
             .query(
-                "SELECT s.* FROM user_songs us JOIN songs s ON us.song_id=s.id \
+                "SELECT s.*, TRUE AS in_library FROM user_songs us JOIN songs s ON us.song_id=s.id \
                  WHERE us.user_id = $1 \
                  ORDER BY s.artist, s.album, s.disc_number, s.track_number, s.title \
                  LIMIT $2 OFFSET $3",
@@ -123,4 +130,41 @@ pub(crate) async fn remove_from_library(
         return Err(not_found("Song not in your library"));
     }
     Ok(Json(serde_json::json!({"message": "Removed from library"})))
+}
+
+#[put("/music/library", data = "<request>")]
+pub(crate) async fn set_library_membership(
+    pool: &State<Pool>,
+    user: AuthenticatedUser,
+    request: Json<SetLibraryMembershipRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    if request.song_ids.is_empty() {
+        return Err(bad_request("Select at least one song"));
+    }
+
+    let client = get_client(pool).await?;
+    let updated = if request.in_library {
+        client
+            .execute(
+                "INSERT INTO user_songs (user_id, song_id)
+                 SELECT $1, songs.id
+                 FROM songs
+                 WHERE songs.id = ANY($2::UUID[])
+                 ON CONFLICT DO NOTHING",
+                &[&user.id, &request.song_ids],
+            )
+            .await
+            .map_err(db_error)?
+    } else {
+        client
+            .execute(
+                "DELETE FROM user_songs
+                 WHERE user_id = $1 AND song_id = ANY($2::UUID[])",
+                &[&user.id, &request.song_ids],
+            )
+            .await
+            .map_err(db_error)?
+    };
+
+    Ok(Json(serde_json::json!({ "updated": updated })))
 }

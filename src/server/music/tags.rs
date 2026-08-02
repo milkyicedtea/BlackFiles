@@ -26,6 +26,7 @@ pub struct SongResponse {
     pub format: Option<String>,
     pub bitrate_kbps: Option<i16>,
     pub has_cover_art: bool,
+    pub in_library: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -37,6 +38,19 @@ pub struct SongListResponse {
     pub total: i64,
     pub page: i64,
     pub limit: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct SongSelectionEntry {
+    pub id: Uuid,
+    pub in_library: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(crate = "rocket::serde")]
+pub struct SongSelectionResponse {
+    pub songs: Vec<SongSelectionEntry>,
 }
 
 #[derive(Debug, Deserialize)]
