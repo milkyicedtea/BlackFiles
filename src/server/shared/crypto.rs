@@ -3,7 +3,7 @@ use sha2::{Digest, Sha256};
 
 pub(crate) fn random_hex<const N: usize>() -> String
 where
-    rand::distributions::Standard: rand::distributions::Distribution<[u8; N]>,
+    rand::distr::StandardUniform: rand::distr::Distribution<[u8; N]>,
 {
     hex::encode(random::<[u8; N]>())
 }
