@@ -75,7 +75,7 @@ pub enum ChildEntry {
         parent: String,
         title: String,
         artist: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "coverArt", skip_serializing_if = "Option::is_none")]
         cover_art: Option<String>,
         #[serde(rename = "isDir")]
         is_dir: bool,
@@ -92,11 +92,11 @@ pub enum ChildEntry {
         year: Option<i16>,
         #[serde(skip_serializing_if = "Option::is_none")]
         genre: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "coverArt", skip_serializing_if = "Option::is_none")]
         cover_art: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         duration: Option<f64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "bitRate", skip_serializing_if = "Option::is_none")]
         bitrate: Option<i16>,
         #[serde(skip_serializing_if = "Option::is_none")]
         size: Option<i64>,
@@ -146,7 +146,7 @@ pub struct AlbumInfo {
     pub year: Option<i16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub genre: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "coverArt", skip_serializing_if = "Option::is_none")]
     pub cover_art: Option<String>,
 }
 
@@ -214,11 +214,11 @@ pub struct SongEntry {
     pub year: Option<i16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub genre: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "coverArt", skip_serializing_if = "Option::is_none")]
     pub cover_art: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "bitRate", skip_serializing_if = "Option::is_none")]
     pub bitrate: Option<i16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<i64>,
@@ -245,8 +245,21 @@ pub struct AlbumListResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(crate = "rocket::serde")]
+pub struct AlbumList2Response {
+    #[serde(rename = "albumList2")]
+    pub album_list: AlbumListContainer,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(crate = "rocket::serde")]
 pub struct AlbumListContainer {
     pub album: Vec<AlbumRef>,
+}
+
+#[derive(Clone, Copy)]
+enum AlbumListResponseKind {
+    Legacy,
+    Id3,
 }
 
 #[derive(Debug, Serialize)]
@@ -661,6 +674,7 @@ async fn album_list(
     pool: &State<Pool>,
     user: SubsonicUser,
     query: AlbumListQuery,
+    response_kind: AlbumListResponseKind,
 ) -> Json<serde_json::Value> {
     let limit = query.size.unwrap_or(10).min(500) as i64;
     let skip = query.offset.unwrap_or(0) as i64;
@@ -724,9 +738,11 @@ async fn album_list(
             duration: row.try_get("total_dur").ok(),
         })
         .collect();
-    ok_resp(AlbumListResponse {
-        album_list: AlbumListContainer { album: albums },
-    })
+    let album_list = AlbumListContainer { album: albums };
+    match response_kind {
+        AlbumListResponseKind::Legacy => ok_resp(AlbumListResponse { album_list }),
+        AlbumListResponseKind::Id3 => ok_resp(AlbumList2Response { album_list }),
+    }
 }
 
 #[get("/getAlbumList2?<query..>")]
@@ -735,7 +751,7 @@ pub(crate) async fn get_album_list2(
     user: SubsonicUser,
     query: AlbumListQuery,
 ) -> Json<serde_json::Value> {
-    album_list(pool, user, query).await
+    album_list(pool, user, query, AlbumListResponseKind::Id3).await
 }
 
 #[get("/getAlbumList?<query..>")]
@@ -744,7 +760,7 @@ pub(crate) async fn get_album_list(
     user: SubsonicUser,
     query: AlbumListQuery,
 ) -> Json<serde_json::Value> {
-    album_list(pool, user, query).await
+    album_list(pool, user, query, AlbumListResponseKind::Legacy).await
 }
 
 #[get("/getGenres")]
@@ -807,5 +823,52 @@ mod tests {
                 "albumCount": 1,
             })
         );
+    }
+
+    #[test]
+    fn album_list_responses_use_their_protocol_keys() {
+        let legacy = serde_json::to_value(SubsonicResponse::ok(AlbumListResponse {
+            album_list: AlbumListContainer { album: Vec::new() },
+        }))
+        .expect("legacy album list response should serialize");
+        let id3 = serde_json::to_value(SubsonicResponse::ok(AlbumList2Response {
+            album_list: AlbumListContainer { album: Vec::new() },
+        }))
+        .expect("ID3 album list response should serialize");
+
+        let legacy_response = &legacy["subsonic-response"];
+        assert!(legacy_response.get("albumList").is_some());
+        assert!(legacy_response.get("albumList2").is_none());
+
+        let id3_response = &id3["subsonic-response"];
+        assert!(id3_response.get("albumList2").is_some());
+        assert!(id3_response.get("albumList").is_none());
+    }
+
+    #[test]
+    fn directory_songs_use_subsonic_media_field_names() {
+        let song = serde_json::to_value(ChildEntry::Song {
+            id: "song-id".into(),
+            parent: "album-id".into(),
+            title: "Song".into(),
+            artist: "Artist".into(),
+            album: "Album".into(),
+            track: None,
+            year: None,
+            genre: None,
+            cover_art: Some("cover-id".into()),
+            duration: None,
+            bitrate: Some(320),
+            size: None,
+            content_type: "audio/mpeg".into(),
+            is_dir: false,
+            is_video: false,
+        })
+        .expect("directory song should serialize");
+
+        assert_eq!(song["coverArt"], "cover-id");
+        assert_eq!(song["bitRate"], 320);
+        assert!(song.get("cover_art").is_none());
+        assert!(song.get("bitrate").is_none());
     }
 }
