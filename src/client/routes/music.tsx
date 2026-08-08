@@ -13,7 +13,7 @@ import {
   usePersonalMusicSongs,
   useRemovePersonalMusicSong,
   useSetPersonalMusicSongs,
-  useUpdateMusicTags,
+  useUpdateMusicSong,
 } from '@local/hooks/useMusic'
 import {
   mergeVisibleMusicSelection,
@@ -97,7 +97,7 @@ function MusicPage() {
   const allVisibleSongsSelected =
     globalSongs.length > 0 && globalSongs.every((song) => selectedGlobalMembership.has(song.id))
   const knownPersonalSongIds = useKnownPersonalSongIds(personalQuery.data?.songs ?? [])
-  const updateTags = useUpdateMusicTags()
+  const updateSong = useUpdateMusicSong()
   const deleteSong = useDeleteGlobalMusicSong()
   const addSong = useAddPersonalMusicSong()
   const removeSong = useRemovePersonalMusicSong()
@@ -158,9 +158,9 @@ function MusicPage() {
     })
   }
 
-  const saveTags = async (values: MusicTagUpdate) => {
+  const saveSong = async (values: MusicTagUpdate, cover: File | null) => {
     if (!editingSong) return
-    await updateTags.mutateAsync({ songId: editingSong.id, tags: values })
+    await updateSong.mutateAsync({ songId: editingSong.id, tags: values, cover })
     setEditingSong(null)
   }
 
@@ -449,9 +449,9 @@ function MusicPage() {
           key={editingSong.id}
           song={editingSong}
           opened
-          saving={updateTags.isPending}
+          saving={updateSong.isPending}
           onClose={() => setEditingSong(null)}
-          onSave={saveTags}
+          onSave={saveSong}
         />
       )}
       <AddFromGlobalMusicModal

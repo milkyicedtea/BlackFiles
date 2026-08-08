@@ -1,13 +1,26 @@
+import { musicCoverUrl } from '@local/lib/musicCover'
 import type { MusicSong, MusicTagFormValues, MusicTagUpdate } from '@local/types/music'
-import { Button, Grid, Group, Modal, NumberInput, Stack, TextInput } from '@mantine/core'
+import {
+  Avatar,
+  Button,
+  FileInput,
+  Grid,
+  Group,
+  Modal,
+  NumberInput,
+  Stack,
+  TextInput,
+} from '@mantine/core'
 import { useForm } from '@mantine/form'
+import { IconMusic } from '@tabler/icons-react'
+import { useEffect, useState } from 'react'
 
 interface MusicTagEditorProps {
   song: MusicSong
   opened: boolean
   saving: boolean
   onClose: () => void
-  onSave: (values: MusicTagUpdate) => Promise<void>
+  onSave: (values: MusicTagUpdate, cover: File | null) => Promise<void>
 }
 
 const OPTIONAL_NUMBER_ERROR = 'Enter a whole number or leave this blank'
@@ -20,6 +33,20 @@ function validateOptionalInteger(value: number | string, minimum: number, maximu
 }
 
 export function MusicTagEditor({ song, opened, saving, onClose, onSave }: MusicTagEditorProps) {
+  const [cover, setCover] = useState<File | null>(null)
+  const [coverPreview, setCoverPreview] = useState<string | null>(null)
+  const coverTooLarge = cover !== null && cover.size > 10 * 1024 * 1024
+
+  useEffect(() => {
+    if (!cover) {
+      setCoverPreview(null)
+      return
+    }
+
+    const preview = URL.createObjectURL(cover)
+    setCoverPreview(preview)
+    return () => URL.revokeObjectURL(preview)
+  }, [cover])
   const form = useForm<MusicTagFormValues>({
     mode: 'uncontrolled',
     initialValues: {
@@ -47,19 +74,45 @@ export function MusicTagEditor({ song, opened, saving, onClose, onSave }: MusicT
     <Modal opened={opened} onClose={onClose} title={`Edit tags - ${song.title}`} size="lg">
       <form
         onSubmit={form.onSubmit(async (values) => {
-          await onSave({
-            title: values.title.trim(),
-            artist: values.artist.trim(),
-            album: values.album.trim(),
-            album_artist: values.album_artist.trim(),
-            genre: values.genre.trim(),
-            year: values.year === '' ? null : Number(values.year),
-            track_number: values.track_number === '' ? null : Number(values.track_number),
-            disc_number: values.disc_number === '' ? null : Number(values.disc_number),
-          })
+          await onSave(
+            {
+              title: values.title.trim(),
+              artist: values.artist.trim(),
+              album: values.album.trim(),
+              album_artist: values.album_artist.trim(),
+              genre: values.genre.trim(),
+              year: values.year === '' ? null : Number(values.year),
+              track_number: values.track_number === '' ? null : Number(values.track_number),
+              disc_number: values.disc_number === '' ? null : Number(values.disc_number),
+            },
+            cover
+          )
         })}
       >
         <Stack gap="sm">
+          <Group align="flex-start" wrap="wrap">
+            <Avatar
+              src={coverPreview ?? musicCoverUrl(song, 240)}
+              alt=""
+              size={140}
+              radius="md"
+              color="gray"
+            >
+              <IconMusic size={44} />
+            </Avatar>
+            <FileInput
+              value={cover}
+              onChange={setCover}
+              label="Cover art"
+              description="JPEG, PNG, GIF, BMP, or TIFF. Maximum 10 MiB."
+              placeholder={song.has_cover_art ? 'Choose a replacement image' : 'Choose an image'}
+              accept="image/jpeg,image/png,image/gif,image/bmp,image/tiff"
+              clearable
+              error={coverTooLarge ? 'Cover image must be 10 MiB or smaller' : undefined}
+              flex={1}
+              miw={240}
+            />
+          </Group>
           <TextInput
             key={form.key('title')}
             label="Title"
@@ -147,7 +200,7 @@ export function MusicTagEditor({ song, opened, saving, onClose, onSave }: MusicT
             <Button type="button" variant="default" onClick={onClose} disabled={saving}>
               Cancel
             </Button>
-            <Button type="submit" loading={saving}>
+            <Button type="submit" loading={saving} disabled={coverTooLarge}>
               Save changes
             </Button>
           </Group>

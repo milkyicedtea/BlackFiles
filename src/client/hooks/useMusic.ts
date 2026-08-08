@@ -4,8 +4,8 @@ import type {
   MusicListParams,
   MusicSong,
   MusicSongListResponse,
+  MusicSongMutation,
   MusicSongSelectionResponse,
-  MusicTagMutation,
 } from '@local/types/music'
 import { notifications } from '@mantine/notifications'
 import {
@@ -145,16 +145,26 @@ export function useKnownPersonalSongIds(currentSongs: Array<MusicSong>) {
   }, [currentSongs, queryClient])
 }
 
-export function useUpdateMusicTags() {
+export function useUpdateMusicSong() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ songId, tags }: MusicTagMutation) => {
-      const { data } = await api.put<MusicSong>(`/music/songs/${songId}/tags`, tags, {
-        _successMessage: 'Song tags updated',
+    mutationFn: async ({ songId, tags, cover }: MusicSongMutation) => {
+      const tagsResponse = await api.put<MusicSong>(`/music/songs/${songId}/tags`, tags)
+      if (!cover) return tagsResponse.data
+
+      const coverResponse = await api.put<MusicSong>(`/music/songs/${songId}/cover`, cover, {
+        headers: { 'Content-Type': cover.type || 'application/octet-stream' },
       })
-      return data
+      return coverResponse.data
     },
-    onSuccess: () => invalidateMusicQueries(queryClient),
+    onSuccess: async () => {
+      notifications.show({
+        title: 'Success',
+        message: 'Song updated',
+        color: 'green',
+      })
+      await invalidateMusicQueries(queryClient)
+    },
   })
 }
 

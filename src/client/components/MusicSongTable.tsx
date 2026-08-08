@@ -1,6 +1,7 @@
+import { musicCoverUrl } from '@local/lib/musicCover'
 import type { MusicSong } from '@local/types/music'
-import { Alert, Box, Group, Text, VisuallyHidden } from '@mantine/core'
-import { IconAlertCircle } from '@tabler/icons-react'
+import { Alert, Avatar, Box, Group, Text, VisuallyHidden } from '@mantine/core'
+import { IconAlertCircle, IconMusic } from '@tabler/icons-react'
 import type { DataTableColumn } from 'mantine-datatable'
 import { DataTable } from 'mantine-datatable'
 import type { ReactNode } from 'react'
@@ -48,6 +49,16 @@ export function MusicSongTable({
   onSelectedSongsChange,
 }: MusicSongTableProps) {
   const columns: Array<DataTableColumn<MusicSong>> = [
+    {
+      accessor: 'cover',
+      title: <VisuallyHidden>Cover</VisuallyHidden>,
+      width: 56,
+      render: (song) => (
+        <Avatar src={musicCoverUrl(song, 40)} alt="" size={40} radius="sm" color="gray">
+          <IconMusic size={18} />
+        </Avatar>
+      ),
+    },
     {
       accessor: 'title',
       title: 'Title',

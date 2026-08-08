@@ -79,7 +79,7 @@ impl<'r> FromRequest<'r> for SubsonicUser {
                 Ok(client) => client,
                 Err(_) => return api_err(request, 0, "Database error"),
             };
-            match client
+            return match client
                 .query_opt(
                     "SELECT u.id, u.username FROM api_keys ak JOIN users u ON ak.user_id=u.id WHERE ak.key_hash=$1",
                     &[&key_hash],
@@ -93,14 +93,14 @@ impl<'r> FromRequest<'r> for SubsonicUser {
                             &[&key_hash],
                         )
                         .await;
-                    return Outcome::Success(SubsonicUser {
+                    Outcome::Success(SubsonicUser {
                         id: row.get("id"),
                         username: row.get("username"),
-                    });
+                    })
                 }
-                Ok(None) => return api_err(request, 44, "Invalid API key"),
-                Err(_) => return api_err(request, 0, "Database error"),
-            }
+                Ok(None) => api_err(request, 44, "Invalid API key"),
+                Err(_) => api_err(request, 0, "Database error"),
+            };
         }
 
         // 2. Check conflicting auth

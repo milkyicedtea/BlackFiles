@@ -106,13 +106,13 @@ bun run lint
 
 All API routes are prefixed with `/api`.
 
-| Area | Routes |
-| --- | --- |
-| Authentication | `POST /auth/login`, `POST /auth/logout`, `POST /auth/refresh`, `GET /auth/me` |
-| File browsing | `GET /list`, `GET /list/<path..>`, `GET /files/<path..>` |
-| File management | `DELETE /files/<path..>`, authenticated tus uploads at `/uploads` |
-| Upload links | `POST /upload-links`, `GET /upload-links`, `DELETE /upload-links/<id>`, and public tus uploads under `/public/upload-links/<token>/uploads` |
-| Administration | User, role, and permission endpoints under `/users`, `/roles`, and `/permissions` |
+| Area            | Routes                                                                                                                                      |
+|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| Authentication  | `POST /auth/login`, `POST /auth/logout`, `POST /auth/refresh`, `GET /auth/me`                                                               |
+| File browsing   | `GET /list`, `GET /list/<path..>`, `GET /files/<path..>`                                                                                    |
+| File management | `DELETE /files/<path..>`, authenticated tus uploads at `/uploads`                                                                           |
+| Upload links    | `POST /upload-links`, `GET /upload-links`, `DELETE /upload-links/<id>`, and public tus uploads under `/public/upload-links/<token>/uploads` |
+| Administration  | User, role, and permission endpoints under `/users`, `/roles`, and `/permissions`                                                           |
 
 Authenticated operations require the relevant role permission. Public upload-link endpoints are the exception: a valid token authorizes one resumable file transfer to its preconfigured destination. The link is consumed only after that transfer completes successfully.
 

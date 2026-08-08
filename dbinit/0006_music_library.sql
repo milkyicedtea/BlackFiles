@@ -35,14 +35,6 @@ CREATE TABLE IF NOT EXISTS user_songs (
     PRIMARY KEY (user_id, song_id)
 );
 
--- Cover art (extracted from tags)
-CREATE TABLE IF NOT EXISTS cover_art (
-    song_id UUID PRIMARY KEY REFERENCES songs(id) ON DELETE CASCADE,
-    file_path TEXT NOT NULL,                 -- relative to storage/music/.covers/
-    mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
-    width SMALLINT,
-    height SMALLINT
-);
 
 -- API keys for OpenSubsonic clients (raw key shown once, stored as SHA-256 hash)
 CREATE TABLE IF NOT EXISTS api_keys (

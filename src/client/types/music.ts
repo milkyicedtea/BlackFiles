@@ -59,7 +59,8 @@ export interface MusicTagFormValues
   disc_number: number | string
 }
 
-export interface MusicTagMutation {
+export interface MusicSongMutation {
   songId: string
   tags: MusicTagUpdate
+  cover: File | null
 }

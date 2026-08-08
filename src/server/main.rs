@@ -26,9 +26,10 @@ use crate::files::{
 };
 use crate::frontend::frontend_fallback;
 use crate::music::{
-    add_to_library, create_music_upload, delete_song, head_music_upload, list_personal_library,
-    list_song_selection, list_songs, music_tus_options, patch_music_upload, remove_from_library,
-    scan_songs, set_library_membership, terminate_music_upload, update_song_tags,
+    add_to_library, create_music_upload, delete_song, get_song_cover, head_music_upload,
+    list_personal_library, list_song_selection, list_songs, music_tus_options, patch_music_upload,
+    remove_from_library, scan_songs, set_library_membership, terminate_music_upload,
+    update_song_cover, update_song_tags,
 };
 use crate::opensubsonic::{
     create_playlist, delete_playlist, get_album, get_album_list, get_album_list2, get_artist,
@@ -47,7 +48,6 @@ use rocket::{Build, Data, Request, Rocket};
 fn prepare_dirs() {
     std::fs::create_dir_all(crate::shared::STORAGE_ROOT).ok();
     std::fs::create_dir_all(crate::shared::MUSIC_ROOT).ok();
-    std::fs::create_dir_all("storage/music/.covers").ok();
     std::fs::create_dir_all(crate::shared::BUILD_ROOT).ok();
 }
 
@@ -108,6 +108,8 @@ fn rocket() -> _ {
                 list_song_selection,
                 delete_song,
                 update_song_tags,
+                get_song_cover,
+                update_song_cover,
                 scan_songs,
                 list_personal_library,
                 add_to_library,

@@ -1,6 +1,5 @@
 use super::*;
 
-use lofty::picture::PictureType;
 use lofty::probe::Probe;
 use lofty::tag::ItemKey;
 use std::path::Path;
@@ -123,7 +122,7 @@ pub(crate) async fn scan_and_insert_song(pool: &Pool, relative_path: &str) -> Re
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase());
-    let has_cover_art = extract_cover_art(tag, relative_path).await;
+    let has_cover_art = has_embedded_artwork(tag);
 
     let client = pool
         .get()
@@ -168,38 +167,6 @@ pub(crate) async fn scan_and_insert_song(pool: &Pool, relative_path: &str) -> Re
     Ok(song_id)
 }
 
-async fn extract_cover_art(tag: Option<&lofty::tag::Tag>, relative_path: &str) -> bool {
-    let tag = match tag {
-        Some(t) => t,
-        None => return false,
-    };
-    let front_cover = tag
-        .pictures()
-        .iter()
-        .find(|p| p.pic_type() == PictureType::CoverFront)
-        .or_else(|| tag.pictures().first());
-    let picture = match front_cover {
-        Some(p) => p,
-        None => return false,
-    };
-
-    let covers_dir = Path::new(MUSIC_ROOT).join(".covers");
-    if fs::create_dir_all(&covers_dir).await.is_err() {
-        return false;
-    }
-
-    let cover_name = relative_path
-        .replace(['/', '\\', ' '], "_")
-        .replace('.', "_");
-    let ext = match picture.mime_type() {
-        Some(mime) if mime.as_str() == "image/png" => "png",
-        Some(mime) if mime.as_str() == "image/gif" => "gif",
-        _ => "jpg",
-    };
-    let cover_path = covers_dir.join(format!("{cover_name}.{ext}"));
-    fs::write(&cover_path, picture.data()).await.is_ok()
-}
-
 #[put("/music/songs/<id>/tags", data = "<req>")]
 pub(crate) async fn update_song_tags(
     pool: &State<Pool>,
@@ -225,15 +192,16 @@ pub(crate) async fn update_song_tags(
     let track_number = req.track_number.or_else(|| row.get("track_number"));
     let disc_number = req.disc_number.or_else(|| row.get("disc_number"));
 
+    let full_path = Path::new(MUSIC_ROOT).join(&file_path);
+    if let Err(error) = write_file_tags(&full_path, &req).await {
+        eprintln!("Failed to write tags to {file_path}: {error}");
+        return Err(server_error());
+    }
+
     client.execute(
         "UPDATE songs SET title=$1,artist=$2,album=$3,album_artist=$4,genre=$5,year=$6,track_number=$7,disc_number=$8,updated_at=NOW() WHERE id=$9",
         &[&title,&artist,&album,&album_artist,&genre,&year,&track_number,&disc_number,&song_id],
     ).await.map_err(db_error)?;
-
-    let full_path = Path::new(MUSIC_ROOT).join(&file_path);
-    if let Err(e) = write_file_tags(&full_path, &req).await {
-        eprintln!("Warning: failed to write tags to {file_path}: {e}");
-    }
 
     let updated = client
         .query_one("SELECT * FROM songs WHERE id = $1", &[&song_id])

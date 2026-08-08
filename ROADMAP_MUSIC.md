@@ -343,6 +343,15 @@ The current settings pages move under `/admin/`. New personal settings pages are
 - [x] Tag editor modal: inline edit of title/artist/album/genre/year/track.
 - [x] Delete confirmation with cascade warning.
 
+### Phase 7.5 - Embedded Cover Art
+
+- [x] Use artwork embedded in audio tags as the only cover-art source of truth.
+- [x] Serve embedded artwork through Blackfiles and OpenSubsonic endpoints.
+- [x] Resize `getCoverArt` responses on demand when `size` is specified.
+- [x] Show cover thumbnails in music tables and the tag editor.
+- [x] Allow cover replacement from the tag editor.
+- [x] Remove the `cover_art` table and `.covers` extraction flow.
+
 ### Phase 8 - Polish & Tier 2/3 Endpoints
 
 - [ ] Remaining OpenSubsonic browsing/info endpoints.

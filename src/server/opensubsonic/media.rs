@@ -1,4 +1,5 @@
 use super::*;
+use crate::music::{ArtworkError, read_embedded_artwork};
 
 // ── Phase 5: Media & Search response types ──
 
@@ -74,6 +75,41 @@ async fn binary_user_song(
     get_user_song(&client, user_id, song_id)
         .await
         .map_err(|_| SubsonicBinaryResponse::error(70, "Resource not found"))
+}
+
+async fn binary_cover_song(
+    pool: &Pool,
+    user_id: Uuid,
+    id: &str,
+) -> Result<tokio_postgres::Row, SubsonicBinaryResponse> {
+    let client = pool
+        .get()
+        .await
+        .map_err(|_| SubsonicBinaryResponse::error(0, "Database error"))?;
+
+    let row = if let Ok(song_id) = Uuid::parse_str(id) {
+        client
+            .query_opt(
+                "SELECT s.* FROM songs s JOIN user_songs us ON s.id = us.song_id \
+                 WHERE us.user_id = $1 AND s.id = $2 AND s.has_cover_art",
+                &[&user_id, &song_id],
+            )
+            .await
+    } else if let Some((artist, album)) = decode_album_id(id) {
+        client
+            .query_opt(
+                "SELECT s.* FROM songs s JOIN user_songs us ON s.id = us.song_id \
+                 WHERE us.user_id = $1 AND s.artist = $2 AND s.album = $3 AND s.has_cover_art \
+                 ORDER BY s.disc_number NULLS LAST, s.track_number NULLS LAST, s.title LIMIT 1",
+                &[&user_id, &artist, &album],
+            )
+            .await
+    } else {
+        return Err(SubsonicBinaryResponse::error(70, "Resource not found"));
+    };
+
+    row.map_err(|_| SubsonicBinaryResponse::error(0, "Database error"))?
+        .ok_or_else(|| SubsonicBinaryResponse::error(70, "Cover art not found"))
 }
 
 #[allow(non_snake_case)]
@@ -184,51 +220,50 @@ pub(crate) async fn subsonic_download(
     })
 }
 
-#[get("/getCoverArt?<id>&<_size>")]
+#[get("/getCoverArt?<id>&<size>")]
 pub(crate) async fn get_cover_art(
     pool: &State<Pool>,
-    _user: SubsonicUser,
+    user: SubsonicUser,
     id: String,
-    _size: Option<i32>,
+    size: Option<i32>,
 ) -> SubsonicBinaryResponse {
-    let (client, song_uuid) = match binary_context(pool, &id).await {
-        Ok(context) => context,
+    let size = match size {
+        Some(value @ 1..=4096) => Some(value as u32),
+        Some(_) => return SubsonicBinaryResponse::error(0, "Invalid cover art size"),
+        None => None,
+    };
+    let row = match binary_cover_song(pool, user.id, &id).await {
+        Ok(row) => row,
         Err(response) => return response,
     };
-
-    let row = match client
-        .query_opt(
-            "SELECT ca.file_path, ca.mime_type FROM cover_art ca WHERE ca.song_id = $1",
-            &[&song_uuid],
-        )
-        .await
-    {
-        Ok(Some(r)) => r,
-        Ok(None) => return SubsonicBinaryResponse::error(70, "Cover art not found"),
-        Err(_) => return SubsonicBinaryResponse::error(0, "Database error"),
-    };
-
-    let rel_path: String = row.get("file_path");
-    let mime_type: String = row.get("mime_type");
-
-    let full_path = Path::new(MUSIC_ROOT).join(".covers").join(&rel_path);
-    let file = match File::open(&full_path).await {
-        Ok(f) => f,
-        Err(_) => return SubsonicBinaryResponse::error(70, "Cover art file not found"),
-    };
-
-    let metadata = match file.metadata().await {
-        Ok(m) => m,
-        Err(_) => return SubsonicBinaryResponse::error(0, "Failed to read cover art"),
-    };
-    let file_size = metadata.len();
+    let file_path: String = row.get("file_path");
+    let full_path = Path::new(MUSIC_ROOT).join(file_path);
+    let artwork =
+        match tokio::task::spawn_blocking(move || read_embedded_artwork(&full_path, size)).await {
+            Ok(Ok(artwork)) => artwork,
+            Ok(Err(ArtworkError::Missing | ArtworkError::InvalidImage)) => {
+                return SubsonicBinaryResponse::error(70, "Cover art not found");
+            }
+            Ok(Err(error)) => {
+                eprintln!("Failed to read embedded cover art: {error}");
+                return SubsonicBinaryResponse::error(0, "Failed to read cover art");
+            }
+            Err(error) => {
+                eprintln!("Cover art task failed: {error}");
+                return SubsonicBinaryResponse::error(0, "Failed to read cover art");
+            }
+        };
+    let content_length = artwork.bytes.len() as u64;
 
     SubsonicBinaryResponse::Stream(SubsonicStreamResponse {
-        reader: Box::new(file),
-        content_type: mime_type,
-        content_length: file_size,
+        reader: Box::new(std::io::Cursor::new(artwork.bytes)),
+        content_type: artwork.content_type,
+        content_length,
         status: Status::Ok,
-        extra_headers: Vec::new(),
+        extra_headers: vec![(
+            "Cache-Control".into(),
+            "private, max-age=3600, must-revalidate".into(),
+        )],
     })
 }
 

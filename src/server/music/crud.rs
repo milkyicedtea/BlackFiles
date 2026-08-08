@@ -182,14 +182,6 @@ pub(crate) async fn delete_song(
         eprintln!("Warning: could not delete file {file_path}: {e}");
     }
 
-    let covers_dir = Path::new(MUSIC_ROOT).join(".covers");
-    let cover_base = file_path.replace(['/', '\\', ' '], "_").replace('.', "_");
-    for ext in &["jpg", "png", "gif"] {
-        fs::remove_file(covers_dir.join(format!("{cover_base}.{ext}")))
-            .await
-            .ok();
-    }
-
     client
         .execute("DELETE FROM songs WHERE id = $1", &[&song_id])
         .await

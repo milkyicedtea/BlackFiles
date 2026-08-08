@@ -10,10 +10,12 @@ pub(crate) use rocket::serde::{Deserialize, Serialize};
 pub(crate) use tokio::fs;
 
 // Sub-modules
+pub(crate) mod artwork;
 pub(crate) mod crud;
 pub(crate) mod library;
 pub(crate) mod tags;
 pub(crate) mod upload;
 
 // Re-exports for parent (main.rs)
+pub(crate) use artwork::*;
 pub(crate) use {crud::*, library::*, tags::*, upload::*};
